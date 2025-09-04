@@ -1,0 +1,55 @@
+# ------------------------
+# Python
+# ------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# ------------------------
+# Environments
+# ------------------------
+.venv/
+.env
+
+# ------------------------
+# Logs & Outputs
+# ------------------------
+*.log
+logs/
+outputs/
+wandb/
+runs/
+*.out
+*.err
+
+# ------------------------
+# Checkpoints & Models
+# ------------------------
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# ------------------------
+# Datasets (don’t push big raw data)
+# ------------------------
+data/
+*.csv
+*.tsv
+*.txt
+*.zip
+*.tar.gz
+
+# ------------------------
+# IDE / Editor Stuff
+# ------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
