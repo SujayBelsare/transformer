@@ -167,13 +167,13 @@ class GreedyDecoder:
             
             # Create source mask
             from utils import create_padding_mask
-            src_mask = create_padding_mask(src_tensor, self.src_vocab.word2idx[self.src_vocab.PAD_TOKEN])
+            src_mask = create_padding_mask(src_tensor, self.src_vocab.PAD_ID)
             
             # Encode
             encoder_output, _ = self.model.encode(src_tensor, src_mask)
             
             # Initialize target with SOS token
-            tgt_tokens = [self.tgt_vocab.word2idx[self.tgt_vocab.SOS_TOKEN]]
+            tgt_tokens = [self.tgt_vocab.SOS_ID]
             
             for _ in range(self.max_length):
                 tgt_tensor = torch.LongTensor(tgt_tokens).unsqueeze(0).to(self.device)
@@ -190,12 +190,12 @@ class GreedyDecoder:
                 tgt_tokens.append(next_token)
                 
                 # Check for EOS token
-                if next_token == self.tgt_vocab.word2idx[self.tgt_vocab.EOS_TOKEN]:
+                if next_token == self.tgt_vocab.EOS_ID:
                     break
             
             # Convert to sentence
             result_tokens = tgt_tokens[1:]  # Remove SOS token
-            if result_tokens[-1] == self.tgt_vocab.word2idx[self.tgt_vocab.EOS_TOKEN]:
+            if result_tokens[-1] == self.tgt_vocab.EOS_ID:
                 result_tokens = result_tokens[:-1]  # Remove EOS token
             
             return self.tgt_vocab.decode(result_tokens)
@@ -220,20 +220,20 @@ class BeamSearchDecoder:
             
             # Create source mask
             from utils import create_padding_mask
-            src_mask = create_padding_mask(src_tensor, self.src_vocab.word2idx[self.src_vocab.PAD_TOKEN])
+            src_mask = create_padding_mask(src_tensor, self.src_vocab.PAD_ID)
             
             # Encode
             encoder_output, _ = self.model.encode(src_tensor, src_mask)
             
             # Initialize beams
-            beams = [(0.0, [self.tgt_vocab.word2idx[self.tgt_vocab.SOS_TOKEN]])]
+            beams = [(0.0, [self.tgt_vocab.SOS_ID])]
             completed_beams = []
             
             for step in range(self.max_length):
                 candidates = []
                 
                 for score, tokens in beams:
-                    if tokens[-1] == self.tgt_vocab.word2idx[self.tgt_vocab.EOS_TOKEN]:
+                    if tokens[-1] == self.tgt_vocab.EOS_ID:
                         completed_beams.append((score, tokens))
                         continue
                     
@@ -271,7 +271,7 @@ class BeamSearchDecoder:
             if completed_beams:
                 best_beam = min(completed_beams, key=lambda x: x[0])
                 result_tokens = best_beam[1][1:]  # Remove SOS token
-                if result_tokens[-1] == self.tgt_vocab.word2idx[self.tgt_vocab.EOS_TOKEN]:
+                if result_tokens[-1] == self.tgt_vocab.EOS_ID:
                     result_tokens = result_tokens[:-1]  # Remove EOS token
                 return self.tgt_vocab.decode(result_tokens)
             else:
@@ -298,13 +298,13 @@ class TopKSamplingDecoder:
             
             # Create source mask
             from utils import create_padding_mask
-            src_mask = create_padding_mask(src_tensor, self.src_vocab.word2idx[self.src_vocab.PAD_TOKEN])
+            src_mask = create_padding_mask(src_tensor, self.src_vocab.PAD_ID)
             
             # Encode
             encoder_output, _ = self.model.encode(src_tensor, src_mask)
             
             # Initialize target with SOS token
-            tgt_tokens = [self.tgt_vocab.word2idx[self.tgt_vocab.SOS_TOKEN]]
+            tgt_tokens = [self.tgt_vocab.SOS_ID]
             
             for _ in range(self.max_length):
                 tgt_tensor = torch.LongTensor(tgt_tokens).unsqueeze(0).to(self.device)
@@ -330,12 +330,12 @@ class TopKSamplingDecoder:
                 tgt_tokens.append(next_token)
                 
                 # Check for EOS token
-                if next_token == self.tgt_vocab.word2idx[self.tgt_vocab.EOS_TOKEN]:
+                if next_token == self.tgt_vocab.EOS_ID:
                     break
             
             # Convert to sentence
             result_tokens = tgt_tokens[1:]  # Remove SOS token
-            if result_tokens[-1] == self.tgt_vocab.word2idx[self.tgt_vocab.EOS_TOKEN]:
+            if result_tokens[-1] == self.tgt_vocab.EOS_ID:
                 result_tokens = result_tokens[:-1]  # Remove EOS token
             
             return self.tgt_vocab.decode(result_tokens)

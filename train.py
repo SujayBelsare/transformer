@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from encoder import TransformerEncoder
 from decoder import Transformer
 from utils import (
-    load_config, load_data, Vocabulary, DataLoader, 
+    load_config, load_data_splits, Vocabulary, DataLoader, 
     create_padding_mask, create_subsequent_mask,
     LabelSmoothingLoss, WarmupScheduler, save_checkpoint,
     plot_training_curves
@@ -109,6 +109,7 @@ def main():
     parser = argparse.ArgumentParser(description='Train Transformer for Machine Translation')
     parser.add_argument('--config', type=str, default='config.yaml', help='Path to config file')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
+    parser.add_argument('--data_dir', type=str, default='data', help='Path to data directory')
     
     args = parser.parse_args()
     
@@ -122,52 +123,63 @@ def main():
     torch.manual_seed(42)
     np.random.seed(42)
     
-    # Load and split data
-    print("Loading data...")
-    (train_src, train_tgt), (val_src, val_tgt), (test_src, test_tgt) = load_data(
-        config['data']['train_src'], 
-        config['data']['train_tgt'],
-        config['data']['train_split'],
-        config['data']['val_split']
-    )
+    # Load preprocessed data splits
+    print("Loading preprocessed data splits...")
+    (train_src, train_tgt), (val_src, val_tgt), (test_src, test_tgt) = load_data_splits(args.data_dir)
     
     print(f"Training samples: {len(train_src)}")
     print(f"Validation samples: {len(val_src)}")
     print(f"Test samples: {len(test_src)}")
     
-    # Build vocabularies
-    print("Building vocabularies...")
-    src_vocab = Vocabulary()
-    tgt_vocab = Vocabulary()
+    # Load or initialize vocabulary using SentencePiece model
+    print("Loading vocabulary...")
+    vocab_model_path = os.path.join('data_transformations', 'finnish_english.model')
     
-    src_vocab.build_vocab(train_src, config['model']['vocab_size_src'])
-    tgt_vocab.build_vocab(train_tgt, config['model']['vocab_size_tgt'])
+    if os.path.exists(vocab_model_path):
+        print(f"Loading SentencePiece model from {vocab_model_path}")
+        vocab = Vocabulary(vocab_model_path)
+    else:
+        print("SentencePiece model not found. Creating fallback vocabulary...")
+        vocab = Vocabulary()
+        # Create a simple vocabulary from training data
+        all_text = train_src + train_tgt
+        word_freq = Counter()
+        for text in all_text:
+            word_freq.update(text.lower().split())
+        
+        # Keep top vocab_size words
+        vocab_size = config['model']['vocab_size_src']  # Use same size for both
+        most_common = word_freq.most_common(vocab_size - 4)  # -4 for special tokens
+        
+        for word, _ in most_common:
+            if word not in vocab.word2idx:
+                idx = len(vocab.word2idx)
+                vocab.word2idx[word] = idx
+                vocab.idx2word[idx] = word
     
-    print(f"Source vocabulary size: {len(src_vocab)}")
-    print(f"Target vocabulary size: {len(tgt_vocab)}")
+    print(f"Vocabulary size: {len(vocab)}")
     
-    # Save vocabularies
+    # Save vocabulary info
     os.makedirs(config['paths']['vocab_path'], exist_ok=True)
-    src_vocab.save(os.path.join(config['paths']['vocab_path'], 'src_vocab.pkl'))
-    tgt_vocab.save(os.path.join(config['paths']['vocab_path'], 'tgt_vocab.pkl'))
+    vocab.save(os.path.join(config['paths']['vocab_path'], 'vocab.pkl'))
     
     # Create data loaders
     print("Creating data loaders...")
     train_loader = DataLoader(
-        train_src, train_tgt, src_vocab, tgt_vocab, 
+        train_src, train_tgt, vocab, 
         config['training']['batch_size'], config['data']['max_len']
     )
     
     val_loader = DataLoader(
-        val_src, val_tgt, src_vocab, tgt_vocab, 
+        val_src, val_tgt, vocab, 
         config['training']['batch_size'], config['data']['max_len']
     )
     
     # Initialize model
     print("Initializing model...")
     model = Transformer(
-        src_vocab_size=len(src_vocab),
-        tgt_vocab_size=len(tgt_vocab),
+        src_vocab_size=len(vocab),
+        tgt_vocab_size=len(vocab),
         d_model=config['model']['d_model'],
         n_heads=config['model']['n_heads'],
         n_layers=config['model']['n_layers'],
@@ -183,8 +195,8 @@ def main():
     
     # Initialize loss function
     criterion = LabelSmoothingLoss(
-        size=len(tgt_vocab),
-        padding_idx=tgt_vocab.word2idx[tgt_vocab.PAD_TOKEN],
+        size=len(vocab),
+        padding_idx=vocab.PAD_ID,
         smoothing=config['training']['label_smoothing']
     )
     

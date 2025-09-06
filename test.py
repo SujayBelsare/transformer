@@ -5,19 +5,25 @@ import numpy as np
 from tqdm import tqdm
 
 from decoder import Transformer, GreedyDecoder, BeamSearchDecoder, TopKSamplingDecoder
-from utils import load_config, load_data, Vocabulary, compute_bleu
+from utils import load_config, load_data_splits, Vocabulary, compute_bleu
 
 def load_model_and_vocabs(config, model_path, device):
     """Load trained model and vocabularies"""
     
-    # Load vocabularies
-    src_vocab = Vocabulary.load(os.path.join(config['paths']['vocab_path'], 'src_vocab.pkl'))
-    tgt_vocab = Vocabulary.load(os.path.join(config['paths']['vocab_path'], 'tgt_vocab.pkl'))
+    # Load vocabulary
+    vocab_model_path = os.path.join('data_transformations', 'finnish_english.model')
+    
+    if os.path.exists(vocab_model_path):
+        vocab = Vocabulary(vocab_model_path)
+    else:
+        # Load from pickle file as fallback
+        vocab_path = os.path.join(config['paths']['vocab_path'], 'vocab.pkl')
+        vocab = Vocabulary.load(vocab_path)
     
     # Initialize model
     model = Transformer(
-        src_vocab_size=len(src_vocab),
-        tgt_vocab_size=len(tgt_vocab),
+        src_vocab_size=len(vocab),
+        tgt_vocab_size=len(vocab),
         d_model=config['model']['d_model'],
         n_heads=config['model']['n_heads'],
         n_layers=config['model']['n_layers'],
@@ -37,7 +43,7 @@ def load_model_and_vocabs(config, model_path, device):
     print(f"Training epoch: {checkpoint['epoch']}")
     print(f"Training loss: {checkpoint['loss']:.4f}")
     
-    return model, src_vocab, tgt_vocab
+    return model, vocab, vocab
 
 def test_model(model, src_vocab, tgt_vocab, test_data, config, device):
     """Test model with different decoding strategies"""
@@ -98,15 +104,25 @@ def test_model(model, src_vocab, tgt_vocab, test_data, config, device):
                 print(f"Reference:  {tgt_sentence}")
                 print(f"Prediction: {prediction}")
         
-        # Compute BLEU score
+        # Calculate BLEU score
         bleu_score = compute_bleu(predictions, references)
-        print(f"\nBLEU Score ({strategy}): {bleu_score:.4f}")
         
         results[strategy] = {
-            'bleu_score': bleu_score,
-            'predictions': predictions,
-            'references': references
+            'bleu': bleu_score,
+            'predictions': predictions[:10],  # Store first 10 for analysis
+            'references': references[:10]
         }
+        
+        # Calculate BLEU score
+        bleu_score = compute_bleu(predictions, references)
+        
+        results[strategy] = {
+            'bleu': bleu_score,
+            'predictions': predictions[:10],  # Store first 10 for analysis
+            'references': references[:10]
+        }
+        
+        print(f"\nBLEU Score ({strategy}): {bleu_score:.4f}")
     
     return results
 
@@ -116,12 +132,7 @@ def compare_positional_encodings(config_path, device):
     config = load_config(config_path)
     
     # Load test data
-    _, _, (test_src, test_tgt) = load_data(
-        config['data']['train_src'], 
-        config['data']['train_tgt'],
-        config['data']['train_split'],
-        config['data']['val_split']
-    )
+    _, _, (test_src, test_tgt) = load_data_splits('data')
     
     pos_encoding_types = ['rope', 'relative_bias']
     results_comparison = {}
@@ -144,8 +155,8 @@ def compare_positional_encodings(config_path, device):
             continue
         
         try:
-            model, src_vocab, tgt_vocab = load_model_and_vocabs(config, model_path, device)
-            results = test_model(model, src_vocab, tgt_vocab, (test_src, test_tgt), config, device)
+            model, vocab, _ = load_model_and_vocabs(config, model_path, device)
+            results = test_model(model, vocab, vocab, (test_src, test_tgt), config, device)
             results_comparison[pos_type] = results
         except Exception as e:
             print(f"Error testing {pos_type}: {e}")
@@ -190,6 +201,7 @@ def main():
     parser.add_argument('--config', type=str, default='config.yaml', help='Path to config file')
     parser.add_argument('--model_path', type=str, help='Path to trained model')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
+    parser.add_argument('--data_dir', type=str, default='data', help='Path to data directory')
     parser.add_argument('--compare_pos_encodings', action='store_true', 
                        help='Compare different positional encodings')
     parser.add_argument('--strategy', type=str, choices=['greedy', 'beam', 'top_k'], 
@@ -215,12 +227,7 @@ def main():
         return
     
     # Load test data
-    _, _, (test_src, test_tgt) = load_data(
-        config['data']['train_src'], 
-        config['data']['train_tgt'],
-        config['data']['train_split'],
-        config['data']['val_split']
-    )
+    _, _, (test_src, test_tgt) = load_data_splits(args.data_dir)
     
     print(f"Test samples: {len(test_src)}")
     
@@ -245,13 +252,13 @@ def main():
         config['decoding']['strategy'] = args.strategy
         
         # Test model
-        results = test_model(model, src_vocab, tgt_vocab, (test_src, test_tgt), config, args.device)
+        results = test_model(model, src_vocab, src_vocab, (test_src, test_tgt), config, args.device)
         
         # Analyze results
         analyze_results(results)
     else:
         # Test all strategies
-        results = test_model(model, src_vocab, tgt_vocab, (test_src, test_tgt), config, args.device)
+        results = test_model(model, src_vocab, src_vocab, (test_src, test_tgt), config, args.device)
         
         # Analyze results
         analyze_results(results)
@@ -264,10 +271,10 @@ def interactive_translation(config_path, model_path, device):
     config = load_config(config_path)
     
     # Load model and vocabularies
-    model, src_vocab, tgt_vocab = load_model_and_vocabs(config, model_path, device)
+    model, vocab, _ = load_model_and_vocabs(config, model_path, device)
     
     # Initialize decoder (default to greedy)
-    decoder = GreedyDecoder(model, src_vocab, tgt_vocab, device=device)
+    decoder = GreedyDecoder(model, vocab, vocab, device=device)
     
     print("Interactive Translation Interface")
     print("Enter 'quit' to exit, 'strategy' to change decoding strategy")
@@ -283,11 +290,11 @@ def interactive_translation(config_path, model_path, device):
             strategy = input("Choose strategy: ").strip().lower()
             
             if strategy == 'greedy':
-                decoder = GreedyDecoder(model, src_vocab, tgt_vocab, device=device)
+                decoder = GreedyDecoder(model, vocab, vocab, device=device)
             elif strategy == 'beam':
-                decoder = BeamSearchDecoder(model, src_vocab, tgt_vocab, device=device)
+                decoder = BeamSearchDecoder(model, vocab, vocab, device=device)
             elif strategy == 'top_k':
-                decoder = TopKSamplingDecoder(model, src_vocab, tgt_vocab, device=device)
+                decoder = TopKSamplingDecoder(model, vocab, vocab, device=device)
             else:
                 print("Invalid strategy!")
                 continue

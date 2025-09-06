@@ -25,11 +25,10 @@ training:
   
 # Data Configuration
 data:
-  train_src: "EUbookshop.fi"
-  train_tgt: "EUbookshop.en"
-  train_split: 0.8
-  val_split: 0.1
-  test_split: 0.1
+  # JSON files with preprocessed data splits
+  train_file: "data/train.json"
+  val_file: "data/val.json"
+  test_file: "data/test.json"
   max_len: 256
   
 # Decoding Configuration

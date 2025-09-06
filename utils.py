@@ -7,24 +7,122 @@ import yaml
 from collections import Counter
 import pickle
 import os
+import json
 from typing import Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
 
+class Vocabulary:
+    """Vocabulary class using SentencePiece tokenizer"""
+    def __init__(self, model_path=None):
+        # Import here to avoid requiring sentencepiece if not using it
+        try:
+            import sentencepiece as spm
+            self.sp = spm.SentencePieceProcessor()
+            if model_path and os.path.exists(model_path):
+                self.sp.load(model_path)
+                self.model_loaded = True
+            else:
+                self.model_loaded = False
+        except ImportError:
+            print("Warning: SentencePiece not available. Using simple vocabulary.")
+            self.sp = None
+            self.model_loaded = False
+            
+        # Special tokens
+        self.PAD_TOKEN = '<pad>'
+        self.UNK_TOKEN = '<unk>'
+        self.SOS_TOKEN = '<s>'
+        self.EOS_TOKEN = '</s>'
+        
+        # Special token IDs for SentencePiece
+        self.PAD_ID = 0
+        self.UNK_ID = 1  
+        self.SOS_ID = 2
+        self.EOS_ID = 3
+        
+        if not self.model_loaded:
+            # Fallback vocabulary for compatibility
+            self.word2idx = {
+                self.PAD_TOKEN: 0,
+                self.UNK_TOKEN: 1,
+                self.SOS_TOKEN: 2,
+                self.EOS_TOKEN: 3
+            }
+            self.idx2word = {v: k for k, v in self.word2idx.items()}
+    
+    def encode(self, text):
+        """Encode text to token IDs"""
+        if self.model_loaded and self.sp:
+            # Use SentencePiece encoding
+            return self.sp.encode(text, add_bos=True, add_eos=True)
+        else:
+            # Fallback: simple word-based encoding
+            tokens = text.lower().split()
+            encoded = [self.word2idx.get(self.SOS_TOKEN, 2)]
+            for token in tokens:
+                encoded.append(self.word2idx.get(token, self.word2idx.get(self.UNK_TOKEN, 1)))
+            encoded.append(self.word2idx.get(self.EOS_TOKEN, 3))
+            return encoded
+    
+    def decode(self, token_ids):
+        """Decode token IDs to text"""
+        if self.model_loaded and self.sp:
+            # Use SentencePiece decoding
+            return self.sp.decode(token_ids)
+        else:
+            # Fallback: simple word-based decoding
+            tokens = []
+            for idx in token_ids:
+                if idx in [self.PAD_ID, self.SOS_ID, self.EOS_ID]:
+                    continue
+                tokens.append(self.idx2word.get(idx, self.UNK_TOKEN))
+            return ' '.join(tokens)
+    
+    def __len__(self):
+        if self.model_loaded and self.sp:
+            return self.sp.get_piece_size()
+        else:
+            return len(self.word2idx)
+    
+    @classmethod
+    def load(cls, path):
+        """Load vocabulary from file"""
+        if path.endswith('.model'):
+            # SentencePiece model
+            return cls(path)
+        else:
+            # Pickle file (for compatibility)
+            with open(path, 'rb') as f:
+                vocab_data = pickle.load(f)
+            vocab = cls()
+            vocab.word2idx = vocab_data.get('word2idx', vocab.word2idx)
+            vocab.idx2word = vocab_data.get('idx2word', vocab.idx2word)
+            return vocab
+    
+    def save(self, path):
+        """Save vocabulary to file"""
+        if not self.model_loaded:
+            # Save as pickle for simple vocabulary
+            vocab_data = {
+                'word2idx': self.word2idx,
+                'idx2word': self.idx2word
+            }
+            with open(path, 'wb') as f:
+                pickle.dump(vocab_data, f)
 class DataLoader:
-    """Custom DataLoader for translation data"""
-    def __init__(self, src_data, tgt_data, src_vocab, tgt_vocab, batch_size, max_len=256):
+    """Custom DataLoader for translation data with JSON format support"""
+    def __init__(self, src_data, tgt_data, vocab, batch_size, max_len=256):
         self.src_data = src_data
         self.tgt_data = tgt_data
-        self.src_vocab = src_vocab
-        self.tgt_vocab = tgt_vocab
+        self.vocab = vocab  # Using shared vocabulary
         self.batch_size = batch_size
         self.max_len = max_len
         
         # Encode and filter data
         self.encoded_data = []
         for src_sent, tgt_sent in zip(src_data, tgt_data):
-            src_encoded = src_vocab.encode(src_sent)
-            tgt_encoded = tgt_vocab.encode(tgt_sent)
+            src_encoded = vocab.encode(src_sent)
+            tgt_encoded = vocab.encode(tgt_sent)
             
             # Filter by length
             if len(src_encoded) <= max_len and len(tgt_encoded) <= max_len:
@@ -44,12 +142,32 @@ class DataLoader:
             tgt_batch = [item[1] for item in batch_data]
             
             # Pad sequences
-            src_batch = self.pad_batch(src_batch, self.src_vocab.word2idx[self.src_vocab.PAD_TOKEN])
-            tgt_batch = self.pad_batch(tgt_batch, self.tgt_vocab.word2idx[self.tgt_vocab.PAD_TOKEN])
+            src_batch = self.pad_batch(src_batch, self.vocab.PAD_ID)
+            tgt_batch = self.pad_batch(tgt_batch, self.vocab.PAD_ID)
             
-            # Add SOS and EOS tokens to target
-            tgt_input = self.add_sos_eos(tgt_batch, self.tgt_vocab, add_eos=False)
-            tgt_output = self.add_sos_eos(tgt_batch, self.tgt_vocab, add_sos=False)
+            # Create input and output for decoder
+            # tgt_input: <s> + tokens (without </s>)
+            # tgt_output: tokens + </s> (without <s>)
+            tgt_input = []
+            tgt_output = []
+            
+            for seq in tgt_batch:
+                # Remove existing SOS/EOS and add properly
+                if seq[0] == self.vocab.SOS_ID:
+                    seq = seq[1:]  # Remove SOS
+                if seq[-1] == self.vocab.EOS_ID:
+                    seq = seq[:-1]  # Remove EOS
+                
+                # Create input (SOS + tokens) and output (tokens + EOS)
+                input_seq = [self.vocab.SOS_ID] + seq
+                output_seq = seq + [self.vocab.EOS_ID]
+                
+                tgt_input.append(input_seq)
+                tgt_output.append(output_seq)
+            
+            # Pad the modified sequences
+            tgt_input = self.pad_batch(tgt_input, self.vocab.PAD_ID)
+            tgt_output = self.pad_batch(tgt_output, self.vocab.PAD_ID)
             
             yield (torch.LongTensor(src_batch), 
                    torch.LongTensor(tgt_input), 
@@ -64,18 +182,6 @@ class DataLoader:
             padded_batch.append(padded_seq)
         return padded_batch
     
-    def add_sos_eos(self, batch, vocab, add_sos=True, add_eos=True):
-        """Add SOS/EOS tokens to batch"""
-        result = []
-        for seq in batch:
-            new_seq = seq.copy()
-            if add_sos:
-                new_seq = [vocab.word2idx[vocab.SOS_TOKEN]] + new_seq
-            if add_eos:
-                new_seq = new_seq + [vocab.word2idx[vocab.EOS_TOKEN]]
-            result.append(new_seq)
-        return result
-    
     def __len__(self):
         return self.n_batches
 
@@ -84,36 +190,25 @@ def load_config(config_path):
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
-def load_data(src_file, tgt_file, train_split=0.8, val_split=0.1):
-    """Load and split parallel data"""
-    with open(src_file, 'r', encoding='utf-8') as f:
-        src_lines = [line.strip().lower() for line in f.readlines()]
+def load_json_data(json_file):
+    """Load data from JSON file"""
+    with open(json_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
     
-    with open(tgt_file, 'r', encoding='utf-8') as f:
-        tgt_lines = [line.strip().lower() for line in f.readlines()]
+    src_sentences = []
+    tgt_sentences = []
     
-    # Ensure same length
-    min_len = min(len(src_lines), len(tgt_lines))
-    src_lines = src_lines[:min_len]
-    tgt_lines = tgt_lines[:min_len]
+    for item in data:
+        src_sentences.append(item['fi'])
+        tgt_sentences.append(item['en'])
     
-    # Shuffle data
-    combined = list(zip(src_lines, tgt_lines))
-    np.random.shuffle(combined)
-    src_lines, tgt_lines = zip(*combined)
-    
-    # Split data
-    n_train = int(len(src_lines) * train_split)
-    n_val = int(len(src_lines) * val_split)
-    
-    train_src = src_lines[:n_train]
-    train_tgt = tgt_lines[:n_train]
-    
-    val_src = src_lines[n_train:n_train + n_val]
-    val_tgt = tgt_lines[n_train:n_train + n_val]
-    
-    test_src = src_lines[n_train + n_val:]
-    test_tgt = tgt_lines[n_train + n_val:]
+    return src_sentences, tgt_sentences
+
+def load_data_splits(data_dir):
+    """Load preprocessed train/val/test splits from JSON files"""
+    train_src, train_tgt = load_json_data(os.path.join(data_dir, 'train.json'))
+    val_src, val_tgt = load_json_data(os.path.join(data_dir, 'val.json'))
+    test_src, test_tgt = load_json_data(os.path.join(data_dir, 'test.json'))
     
     return (train_src, train_tgt), (val_src, val_tgt), (test_src, test_tgt)
 

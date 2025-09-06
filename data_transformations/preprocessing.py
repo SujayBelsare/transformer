@@ -230,12 +230,12 @@ class PreprocessingDataset:
 
 if __name__ == "__main__":
     dataset = PreprocessingDataset(
-        fi_path="./data/EUbookshop.fi",
-        en_path="./data/EUbookshop.en",
+        fi_path="../data/EUbookshop.fi",
+        en_path="../data/EUbookshop.en",
         train_ratio=0.8,
         val_ratio=0.1,
         seed=42,
-        out_dir="./data"
+        out_dir="../data"
     )
     
     # Create and save splits
