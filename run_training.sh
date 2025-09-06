@@ -19,13 +19,13 @@ echo "Data files found. Starting training..."
 
 # Train with RoPE positional encoding
 echo "Training with RoPE positional encoding..."
-python train.py --config config.yaml
+python3 train.py --config config.yaml
 
 echo "Training completed!"
 
 # Test the model
 echo "Testing the trained model..."
-python test.py --config config.yaml
+python3 test.py --config config.yaml
 
 echo "Testing completed!"
 echo "Check the 'logs' directory for training curves and results."

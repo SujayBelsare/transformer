@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import os
@@ -276,6 +277,4 @@ def main():
     print(f"Final validation loss: {val_losses[-1]:.4f}")
 
 if __name__ == '__main__':
-    # Fix import issue
-    import torch.nn.functional as F
     main()

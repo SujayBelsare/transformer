@@ -21,8 +21,8 @@ class RoPEPositionalEmbedding(nn.Module):
         freqs = torch.outer(t, self.inv_freq)
         emb = torch.cat((freqs, freqs), dim=-1)
         
-        cos_emb = emb.cos()[None, :, None, :]
-        sin_emb = emb.sin()[None, :, None, :]
+        cos_emb = emb.cos()
+        sin_emb = emb.sin()
         
         return cos_emb, sin_emb
 
@@ -33,6 +33,12 @@ def rotate_half(x):
 
 def apply_rotary_pos_emb(q, k, cos, sin):
     """Apply rotary positional embedding"""
+    # q, k shape: [batch_size, n_heads, seq_len, d_k]
+    # cos, sin shape: [seq_len, d_k]
+    # Need to add batch and head dimensions to cos, sin
+    cos = cos.unsqueeze(0).unsqueeze(0)  # [1, 1, seq_len, d_k]
+    sin = sin.unsqueeze(0).unsqueeze(0)  # [1, 1, seq_len, d_k]
+    
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
@@ -84,7 +90,7 @@ class MultiHeadAttention(nn.Module):
         
         # Positional encoding
         if pos_encoding_type == "rope":
-            self.rope = RoPEPositionalEmbedding(self.d_k)
+            self.rope = RoPEPositionalEmbedding(self.d_k)  # Use d_k not d_model
         elif pos_encoding_type == "relative_bias":
             self.relative_bias = RelativePositionBias(n_heads)
         
@@ -97,28 +103,51 @@ class MultiHeadAttention(nn.Module):
         nn.init.xavier_uniform_(self.w_o.weight)
         
     def forward(self, query, key, value, mask=None):
-        batch_size, seq_len, d_model = query.size()
+        batch_size, seq_len_q, d_model = query.size()
+        seq_len_k = key.size(1)
+        seq_len_v = value.size(1)
         
         # Linear projections
-        Q = self.w_q(query).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
-        K = self.w_k(key).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
-        V = self.w_v(value).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
+        Q = self.w_q(query).view(batch_size, seq_len_q, self.n_heads, self.d_k).transpose(1, 2)
+        K = self.w_k(key).view(batch_size, seq_len_k, self.n_heads, self.d_k).transpose(1, 2)
+        V = self.w_v(value).view(batch_size, seq_len_v, self.n_heads, self.d_k).transpose(1, 2)
         
         # Apply positional encoding
         if self.pos_encoding_type == "rope":
-            cos, sin = self.rope(query)
-            Q, K = apply_rotary_pos_emb(Q, K, cos, sin)
+            # For self-attention, all sequences have same length
+            # For cross-attention, query and key/value may have different lengths
+            cos_q, sin_q = self.rope(query)
+            if seq_len_k == seq_len_q:
+                # Same sequence length (self-attention case)
+                cos_k, sin_k = cos_q, sin_q
+            else:
+                # Different sequence lengths (cross-attention case)
+                cos_k, sin_k = self.rope(key)
+            
+            # Apply RoPE to Q with query positions, K with key positions
+            cos_q = cos_q.unsqueeze(0).unsqueeze(0)  # [1, 1, seq_len_q, d_k]
+            sin_q = sin_q.unsqueeze(0).unsqueeze(0)  # [1, 1, seq_len_q, d_k]
+            cos_k = cos_k.unsqueeze(0).unsqueeze(0)  # [1, 1, seq_len_k, d_k]
+            sin_k = sin_k.unsqueeze(0).unsqueeze(0)  # [1, 1, seq_len_k, d_k]
+            
+            Q = (Q * cos_q) + (rotate_half(Q) * sin_q)
+            K = (K * cos_k) + (rotate_half(K) * sin_k)
         
         # Scaled dot-product attention
         attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
         
         # Add relative position bias if using relative position encoding
         if self.pos_encoding_type == "relative_bias":
-            relative_bias = self.relative_bias(seq_len).to(attention_scores.device)
+            relative_bias = self.relative_bias(seq_len_q).to(attention_scores.device)
             attention_scores += relative_bias
         
         # Apply mask
         if mask is not None:
+            # mask shape: [batch_size, 1, seq_len] 
+            # attention_scores shape: [batch_size, n_heads, seq_len, seq_len]
+            # Need to expand mask to [batch_size, 1, 1, seq_len] for proper broadcasting
+            if mask.dim() == 3:  # [batch_size, 1, seq_len]
+                mask = mask.unsqueeze(1)  # [batch_size, 1, 1, seq_len]
             attention_scores = attention_scores.masked_fill(mask == 0, -1e9)
         
         # Softmax
@@ -130,7 +159,7 @@ class MultiHeadAttention(nn.Module):
         
         # Concatenate heads
         context = context.transpose(1, 2).contiguous().view(
-            batch_size, seq_len, d_model
+            batch_size, seq_len_q, d_model
         )
         
         # Final linear projection

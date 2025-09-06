@@ -15,7 +15,7 @@ positional_encoding:
   
 # Training Configuration
 training:
-  batch_size: 32
+  batch_size: 16
   learning_rate: 0.0001
   num_epochs: 50
   warmup_steps: 4000
@@ -34,7 +34,7 @@ data:
   
 # Decoding Configuration
 decoding:
-  strategy: "greedy"  # Options: "greedy", "beam", "top_k"
+  strategy: "top_k"  # Options: "greedy", "beam", "top_k"
   beam_size: 5        # For beam search
   k: 50              # For top-k sampling
   temperature: 1.0    # For sampling

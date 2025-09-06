@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-from encoder import MultiHeadAttention, PositionwiseFeedForward, SinusoidalPositionalEncoding
+from encoder import MultiHeadAttention, PositionwiseFeedForward, SinusoidalPositionalEncoding, TransformerEncoder
 
 class DecoderLayer(nn.Module):
     """Single Decoder Layer"""
