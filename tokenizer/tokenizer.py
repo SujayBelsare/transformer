@@ -1,6 +1,7 @@
 import sentencepiece as spm
 import os
 import tempfile
+import json
 from typing import List, Union, Optional
 from collections import Counter
 
@@ -183,6 +184,55 @@ class Vocabulary:
         else:
             raise ValueError("No trained model to save. Train a model first.")
     
+    @staticmethod
+    def load_json_dataset(json_path: str) -> List[str]:
+        """
+        Load sentences from JSON dataset file
+        
+        Args:
+            json_path: Path to JSON file with format [{"fi": "...", "en": "..."}, ...]
+            
+        Returns:
+            List of all sentences (Finnish + English)
+        """
+        sentences = []
+        
+        if not os.path.exists(json_path):
+            print(f"Warning: {json_path} not found, skipping...")
+            return sentences
+            
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        for item in data:
+            # Add both Finnish and English sentences
+            sentences.append(item['fi'])
+            sentences.append(item['en'])
+        
+        print(f"Loaded {len(data)} pairs ({len(sentences)} sentences) from {json_path}")
+        return sentences
+    
+    @staticmethod
+    def load_full_dataset(data_dir: str) -> List[str]:
+        """
+        Load all sentences from train, val, and test JSON files
+        
+        Args:
+            data_dir: Directory containing train.json, val.json, test.json
+            
+        Returns:
+            List of all sentences for tokenizer training
+        """
+        all_sentences = []
+        
+        # Load from all split files
+        for split in ['train', 'val', 'test']:
+            json_path = os.path.join(data_dir, f"{split}.json")
+            sentences = Vocabulary.load_json_dataset(json_path)
+            all_sentences.extend(sentences)
+        
+        print(f"Total sentences for tokenizer training: {len(all_sentences)}")
+        return all_sentences
     @classmethod
     def load(cls, model_path: str) -> 'Vocabulary':
         """
@@ -203,36 +253,34 @@ class Vocabulary:
         return vocab
 
 
-# Example usage and testing
 if __name__ == "__main__":
-    # read data from files
-    with open('../data/EUbookshop.fi', 'r', encoding='utf-8') as f:
-        finnish_sentences = f.readlines()
-    with open('../data/EUbookshop.en', 'r', encoding='utf-8') as f:
-        english_sentences = f.readlines()
-    combined_sentences = finnish_sentences + english_sentences
+    print("Loading data from JSON files...")
+    data_dir = "../data"
+    
+    all_sentences = Vocabulary.load_full_dataset(data_dir)
 
-    # Create and train vocabulary
     vocab = Vocabulary()
     
-    print("Training SentencePiece model...")
-    vocab.train(combined_sentences, vocab_size=16000, model_prefix="finnish_english")
+    print(f"\nTraining SentencePiece model on {len(all_sentences)} sentences...")
+    vocab.train(
+        sentences=all_sentences, 
+        vocab_size=16000,  # Increased vocab size for better coverage
+        model_prefix="finnish_english",
+        character_coverage=0.9995
+    )
 
-    # Test encoding/decoding
-    test_sentence = "osallistujillamme"
-    
-    print(f"\nOriginal: {test_sentence}")
-    
-    # Encode to pieces (for visualization)
-    pieces = vocab.encode_as_pieces(test_sentence)
-    print(f"Pieces: {pieces}")
-    
-    # Encode to IDs
-    token_ids = vocab.encode(test_sentence)
-    print(f"Token IDs: {token_ids}")
-    
-    # Decode back
-    decoded = vocab.decode(token_ids)
-    print(f"Decoded: {decoded}")
-    
-    print(f"\nVocabulary size: {len(vocab)}")
+    # Test encoding/decoding with examples
+    test_sentences = [
+        "hei, miten menee?",
+        "hello, how are you?"
+    ]
+    for sentence in test_sentences:
+        token_ids = vocab.encode(sentence)
+        pieces = vocab.encode_as_pieces(sentence)
+        decoded = vocab.decode(token_ids)
+        
+        print(f"\nOriginal: {sentence}")
+        print(f"Pieces: {pieces}")
+        print(f"Token IDs: {token_ids}")
+        print(f"Decoded: {decoded}")
+
