@@ -11,104 +11,48 @@ import json
 from typing import Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
 
-class Vocabulary:
-    """Vocabulary class using SentencePiece tokenizer"""
-    def __init__(self, model_path=None):
-        # Import here to avoid requiring sentencepiece if not using it
-        try:
-            import sentencepiece as spm
-            self.sp = spm.SentencePieceProcessor()
-            if model_path and os.path.exists(model_path):
-                self.sp.load(model_path)
-                self.model_loaded = True
-            else:
-                self.model_loaded = False
-        except ImportError:
-            print("Warning: SentencePiece not available. Using simple vocabulary.")
-            self.sp = None
-            self.model_loaded = False
-            
-        # Special tokens
-        self.PAD_TOKEN = '<pad>'
-        self.UNK_TOKEN = '<unk>'
-        self.SOS_TOKEN = '<s>'
-        self.EOS_TOKEN = '</s>'
+
+import sentencepiece as sp
+import pickle
+class SimpleVocab:
+    def __init__(self, model_path):
+        """Load SentencePiece model, build word2idx and idx2word dictionaries."""
+        self.sp = sp.SentencePieceProcessor()
+        self.sp.Load(model_path)
+        self.PAD_ID = self.sp.pad_id()
         
-        # Special token IDs for SentencePiece
-        self.PAD_ID = 0
-        self.UNK_ID = 1  
-        self.SOS_ID = 2
-        self.EOS_ID = 3
-        
-        if not self.model_loaded:
-            # Fallback vocabulary for compatibility
-            self.word2idx = {
-                self.PAD_TOKEN: 0,
-                self.UNK_TOKEN: 1,
-                self.SOS_TOKEN: 2,
-                self.EOS_TOKEN: 3
-            }
-            self.idx2word = {v: k for k, v in self.word2idx.items()}
-    
-    def encode(self, text):
-        """Encode text to token IDs"""
-        if self.model_loaded and self.sp:
-            # Use SentencePiece encoding
-            return self.sp.encode(text, add_bos=True, add_eos=True)
-        else:
-            # Fallback: simple word-based encoding
-            tokens = text.lower().split()
-            encoded = [self.word2idx.get(self.SOS_TOKEN, 2)]
-            for token in tokens:
-                encoded.append(self.word2idx.get(token, self.word2idx.get(self.UNK_TOKEN, 1)))
-            encoded.append(self.word2idx.get(self.EOS_TOKEN, 3))
-            return encoded
-    
-    def decode(self, token_ids):
-        """Decode token IDs to text"""
-        if self.model_loaded and self.sp:
-            # Use SentencePiece decoding
-            return self.sp.decode(token_ids)
-        else:
-            # Fallback: simple word-based decoding
-            tokens = []
-            for idx in token_ids:
-                if idx in [self.PAD_ID, self.SOS_ID, self.EOS_ID]:
-                    continue
-                tokens.append(self.idx2word.get(idx, self.UNK_TOKEN))
-            return ' '.join(tokens)
+        # Build dictionaries from the model
+        vocab_size = self.sp.GetPieceSize()
+        self.word2idx = {self.sp.IdToPiece(i): i for i in range(vocab_size)}
+        self.idx2word = {i: self.sp.IdToPiece(i) for i in range(vocab_size)}
     
     def __len__(self):
-        if self.model_loaded and self.sp:
-            return self.sp.get_piece_size()
-        else:
-            return len(self.word2idx)
+        """Return vocabulary size."""
+        return len(self.word2idx)
     
-    @classmethod
-    def load(cls, path):
-        """Load vocabulary from file"""
-        if path.endswith('.model'):
-            # SentencePiece model
-            return cls(path)
-        else:
-            # Pickle file (for compatibility)
-            with open(path, 'rb') as f:
-                vocab_data = pickle.load(f)
-            vocab = cls()
-            vocab.word2idx = vocab_data.get('word2idx', vocab.word2idx)
-            vocab.idx2word = vocab_data.get('idx2word', vocab.idx2word)
-            return vocab
+    def encode(self, text):
+        """Encode text to list of token IDs using word2idx (approximates subword via SentencePiece)."""
+        # Use SentencePiece for accurate subword encoding, then map to dict for consistency
+        tokens = self.sp.Encode(text, out_type=str)  # Get subword strings
+        return [self.word2idx.get(token, self.PAD_ID) for token in tokens]  # Fallback to PAD if unknown
+    
+    def decode(self, ids):
+        """Decode list of token IDs to text using idx2word."""
+        tokens = [self.idx2word.get(id, '<unk>') for id in ids if id != self.PAD_ID]
+        return self.sp.Decode(tokens)  # Use SentencePiece for proper decoding
     
     def save(self, path):
-        """Save vocabulary to file"""
-        if not self.model_loaded:
-            # Save as pickle for simple vocabulary
-            vocab_data = {
-                'word2idx': self.word2idx,
-                'idx2word': self.idx2word
-            }
-            with open(path, 'wb') as f:
-                pickle.dump(vocab_data, f)
+        """Save the SimpleVocab object to a pickle file."""
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)
+    
+    @staticmethod
+    def load(path):
+        """Load a SimpleVocab object from a pickle file."""
+        with open(path, 'rb') as f:
+            return pickle.load(f)
+
+
 class DataLoader:
     """Custom DataLoader for translation data with JSON format support"""
     def __init__(self, src_data, tgt_data, vocab, batch_size, max_len=256):

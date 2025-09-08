@@ -5,27 +5,22 @@ import json
 from typing import List, Union, Optional
 from collections import Counter
 
-
 class Vocabulary:
     """Vocabulary class using SentencePiece BPE for Finnish and English tokenization"""
     
-    def __init__(self, model_path: Optional[str] = None):
+    def __init__(self):
         self.sp = spm.SentencePieceProcessor()
-        self.model_path = model_path
+        self.model_path = None
         
         # Special token IDs (SentencePiece handles these automatically)
         self.PAD_ID = 0  # <pad>
         self.UNK_ID = 1  # <unk>  
         self.BOS_ID = 2  # <s> (Beginning of sentence)
         self.EOS_ID = 3  # </s> (End of sentence)
-        
-        # Load existing model if provided
-        if model_path and os.path.exists(model_path):
-            self.sp.load(model_path)
     
     def train(self, 
               sentences: List[str], 
-              vocab_size: int = 32000,
+              vocab_size: int = 8000,
               model_prefix: str = "sentencepiece_model",
               character_coverage: float = 0.9995):
         """
@@ -42,14 +37,14 @@ class Vocabulary:
             for sentence in sentences:
                 f.write(sentence.strip() + '\n')
             temp_file = f.name
-        
+
         try:
             # Train SentencePiece model
-            spm.SentencePieceTrainer.train(
+            spm.SentencePieceTrainer.Train(
                 input=temp_file,
                 model_prefix=model_prefix,
                 vocab_size=vocab_size,
-                model_type='bpe',  # Use BPE algorithm
+                model_type='bpe',
                 character_coverage=character_coverage,
                 pad_id=self.PAD_ID,
                 unk_id=self.UNK_ID,
@@ -59,30 +54,25 @@ class Vocabulary:
                 unk_piece='<unk>',
                 bos_piece='<s>',
                 eos_piece='</s>',
-                user_defined_symbols=[],  # Add custom symbols if needed
+                user_defined_symbols=[],
                 split_by_whitespace=True,
                 split_by_unicode_script=True,  # Helps with multilingual text
                 split_by_number=True,
                 split_digits=True,
                 treat_whitespace_as_suffix=False,
                 allow_whitespace_only_pieces=True,
-                normalization_rule_name='nfkc',  # Unicode normalization
+                normalization_rule_name='nfkc',
             )
-            
-            # Load the trained model
+
             model_file = f"{model_prefix}.model"
-            self.sp.load(model_file)
+            self.sp.Load(model_file)
             self.model_path = model_file
-            
-            print(f"SentencePiece model trained successfully!")
-            print(f"Vocabulary size: {len(self)}")
-            print(f"Model saved as: {model_file}")
-            
+
         finally:
             # Clean up temporary file
             if os.path.exists(temp_file):
                 os.unlink(temp_file)
-    
+
     def encode(self, text: str, add_bos: bool = True, add_eos: bool = True) -> List[int]:
         """
         Encode text to subword token IDs
@@ -95,18 +85,18 @@ class Vocabulary:
         Returns:
             List of token IDs
         """
-        if not hasattr(self.sp, 'encode') or self.sp.get_piece_size() == 0:
+        if not hasattr(self.sp, 'Encode') or self.sp.GetPieceSize() == 0:
             raise ValueError("Model not loaded. Train or load a model first.")
         
         # Encode text to IDs
-        token_ids = self.sp.encode(text.strip())
-        
+        token_ids = self.sp.Encode(text.strip())
+
         # Add special tokens if requested
         if add_bos:
             token_ids = [self.BOS_ID] + token_ids
         if add_eos:
             token_ids = token_ids + [self.EOS_ID]
-            
+
         return token_ids
     
     def encode_as_pieces(self, text: str) -> List[str]:
@@ -119,10 +109,10 @@ class Vocabulary:
         Returns:
             List of subword pieces
         """
-        if not hasattr(self.sp, 'encode') or self.sp.get_piece_size() == 0:
+        if not hasattr(self.sp, 'Encode') or self.sp.GetPieceSize() == 0:
             raise ValueError("Model not loaded. Train or load a model first.")
-            
-        return self.sp.encode_as_pieces(text.strip())
+
+        return self.sp.EncodeAsPieces(text.strip())
     
     def decode(self, token_ids: List[int], skip_special_tokens: bool = True) -> str:
         """
@@ -135,32 +125,16 @@ class Vocabulary:
         Returns:
             Decoded text
         """
-        if not hasattr(self.sp, 'decode') or self.sp.get_piece_size() == 0:
+        if not hasattr(self.sp, 'Decode') or self.sp.GetPieceSize() == 0:
             raise ValueError("Model not loaded. Train or load a model first.")
         
         if skip_special_tokens:
             # Remove special tokens
             filtered_ids = [tid for tid in token_ids 
                           if tid not in [self.PAD_ID, self.BOS_ID, self.EOS_ID]]
-            return self.sp.decode(filtered_ids)
+            return self.sp.Decode(filtered_ids)
         else:
-            return self.sp.decode(token_ids)
-    
-    def __len__(self) -> int:
-        """Return vocabulary size"""
-        return self.sp.get_piece_size() if hasattr(self.sp, 'get_piece_size') else 0
-    
-    def get_vocab_size(self) -> int:
-        """Get vocabulary size"""
-        return len(self)
-    
-    def id_to_piece(self, token_id: int) -> str:
-        """Convert token ID to piece"""
-        return self.sp.id_to_piece(token_id)
-    
-    def piece_to_id(self, piece: str) -> int:
-        """Convert piece to token ID"""
-        return self.sp.piece_to_id(piece)
+            return self.sp.Decode(token_ids)
     
     def save(self, model_prefix: str):
         """
@@ -169,7 +143,7 @@ class Vocabulary:
         Args:
             model_prefix: Prefix for model files
         """
-        if self.model_path and os.path.exists(self.model_path):
+        if (self.model_path is not None) and (os.path.exists(self.model_path)):
             # Copy current model to new location
             import shutil
             new_model_path = f"{model_prefix}.model"
@@ -180,7 +154,7 @@ class Vocabulary:
                 shutil.copy(self.model_path.replace('.model', '.vocab'), new_vocab_path)
             
             self.model_path = new_model_path
-            print(f"💾 Model saved as: {new_model_path}")
+            print(f"Model saved as: {new_model_path}")
         else:
             raise ValueError("No trained model to save. Train a model first.")
     
@@ -247,40 +221,9 @@ class Vocabulary:
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
         
-        vocab = cls(model_path=model_path)
-        print(f"📖 Model loaded from: {model_path}")
-        print(f"📊 Vocabulary size: {len(vocab)}")
+        vocab = cls()
+        vocab.sp.Load(model_path)
+        vocab.model_path = model_path
+        print(f"Model loaded from: {model_path}")
+        print(f"Vocabulary size: {vocab.sp.GetPieceSize()}")
         return vocab
-
-
-if __name__ == "__main__":
-    print("Loading data from JSON files...")
-    data_dir = "../data"
-    
-    all_sentences = Vocabulary.load_full_dataset(data_dir)
-
-    vocab = Vocabulary()
-    
-    print(f"\nTraining SentencePiece model on {len(all_sentences)} sentences...")
-    vocab.train(
-        sentences=all_sentences, 
-        vocab_size=16000,  # Increased vocab size for better coverage
-        model_prefix="finnish_english",
-        character_coverage=0.9995
-    )
-
-    # Test encoding/decoding with examples
-    test_sentences = [
-        "hei, miten menee?",
-        "hello, how are you?"
-    ]
-    for sentence in test_sentences:
-        token_ids = vocab.encode(sentence)
-        pieces = vocab.encode_as_pieces(sentence)
-        decoded = vocab.decode(token_ids)
-        
-        print(f"\nOriginal: {sentence}")
-        print(f"Pieces: {pieces}")
-        print(f"Token IDs: {token_ids}")
-        print(f"Decoded: {decoded}")
-

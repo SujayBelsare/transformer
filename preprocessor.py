@@ -5,11 +5,11 @@ import re
 import unicodedata
 from typing import Tuple, List, Dict
 
-class PreprocessingDataset:
+class Preprocessor:
     def __init__(self, fi_path: str, en_path: str,
                  train_ratio: float = 0.8,
                  val_ratio: float = 0.1,
-                 seed: int = 42,
+                 seed: int = 2023101033,
                  out_dir: str = "./data"):
         """
         Args:
@@ -229,7 +229,7 @@ class PreprocessingDataset:
         return self.splits[split]
 
 if __name__ == "__main__":
-    dataset = PreprocessingDataset(
+    dataset = Preprocessor(
         fi_path="../data/EUbookshop.fi",
         en_path="../data/EUbookshop.en",
         train_ratio=0.8,

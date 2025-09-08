@@ -113,16 +113,19 @@ def test_model(model, src_vocab, tgt_vocab, test_data, config, device):
             'references': references[:10]
         }
         
-        # Calculate BLEU score
+        print(f"\nBLEU Score ({strategy}): {bleu_score:.4f}")
+    
+    return results
+        
+        # Compute BLEU score
         bleu_score = compute_bleu(predictions, references)
+        print(f"\nBLEU Score ({strategy}): {bleu_score:.4f}")
         
         results[strategy] = {
-            'bleu': bleu_score,
-            'predictions': predictions[:10],  # Store first 10 for analysis
-            'references': references[:10]
+            'bleu_score': bleu_score,
+            'predictions': predictions,
+            'references': references
         }
-        
-        print(f"\nBLEU Score ({strategy}): {bleu_score:.4f}")
     
     return results
 
@@ -132,7 +135,12 @@ def compare_positional_encodings(config_path, device):
     config = load_config(config_path)
     
     # Load test data
-    _, _, (test_src, test_tgt) = load_data_splits('data')
+    _, _, (test_src, test_tgt) = load_data(
+        config['data']['train_src'], 
+        config['data']['train_tgt'],
+        config['data']['train_split'],
+        config['data']['val_split']
+    )
     
     pos_encoding_types = ['rope', 'relative_bias']
     results_comparison = {}
@@ -155,8 +163,8 @@ def compare_positional_encodings(config_path, device):
             continue
         
         try:
-            model, vocab, _ = load_model_and_vocabs(config, model_path, device)
-            results = test_model(model, vocab, vocab, (test_src, test_tgt), config, device)
+            model, src_vocab, tgt_vocab = load_model_and_vocabs(config, model_path, device)
+            results = test_model(model, src_vocab, tgt_vocab, (test_src, test_tgt), config, device)
             results_comparison[pos_type] = results
         except Exception as e:
             print(f"Error testing {pos_type}: {e}")

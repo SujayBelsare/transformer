@@ -8,10 +8,12 @@ import argparse
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
+from vocabulary import Vocabulary
+
 from encoder import TransformerEncoder
 from decoder import Transformer
 from utils import (
-    load_config, load_data_splits, Vocabulary, DataLoader, 
+    load_config, load_data_splits,
     create_padding_mask, create_subsequent_mask,
     LabelSmoothingLoss, WarmupScheduler, save_checkpoint,
     plot_training_curves
@@ -117,52 +119,29 @@ def main():
     config = load_config(args.config)
     
     print(f"Using device: {args.device}")
-    print(f"Configuration: {config}")
     
     # Set random seed for reproducibility
-    torch.manual_seed(42)
-    np.random.seed(42)
+    torch.manual_seed(2023101033)
+    np.random.seed(2023101033)
     
     # Load preprocessed data splits
-    print("Loading preprocessed data splits...")
     (train_src, train_tgt), (val_src, val_tgt), (test_src, test_tgt) = load_data_splits(args.data_dir)
-    
     print(f"Training samples: {len(train_src)}")
     print(f"Validation samples: {len(val_src)}")
     print(f"Test samples: {len(test_src)}")
-    
-    # Load or initialize vocabulary using SentencePiece model
-    print("Loading vocabulary...")
+
+    # Loading vocabulary    
     vocab_model_path = os.path.join('data_transformations', 'finnish_english.model')
-    
     if os.path.exists(vocab_model_path):
-        print(f"Loading SentencePiece model from {vocab_model_path}")
-        vocab = Vocabulary(vocab_model_path)
+        vocab = SimpleVocab(vocab_model_path)
     else:
-        print("SentencePiece model not found. Creating fallback vocabulary...")
-        vocab = Vocabulary()
-        # Create a simple vocabulary from training data
-        all_text = train_src + train_tgt
-        word_freq = Counter()
-        for text in all_text:
-            word_freq.update(text.lower().split())
-        
-        # Keep top vocab_size words
-        vocab_size = config['model']['vocab_size_src']  # Use same size for both
-        most_common = word_freq.most_common(vocab_size - 4)  # -4 for special tokens
-        
-        for word, _ in most_common:
-            if word not in vocab.word2idx:
-                idx = len(vocab.word2idx)
-                vocab.word2idx[word] = idx
-                vocab.idx2word[idx] = word
-    
+        raise FileNotFoundError(f"Vocabulary model not found at {vocab_model_path}. Please ensure the model is trained and available.")
     print(f"Vocabulary size: {len(vocab)}")
-    
+
     # Save vocabulary info
     os.makedirs(config['paths']['vocab_path'], exist_ok=True)
     vocab.save(os.path.join(config['paths']['vocab_path'], 'vocab.pkl'))
-    
+
     # Create data loaders
     print("Creating data loaders...")
     train_loader = DataLoader(

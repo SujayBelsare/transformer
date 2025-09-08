@@ -6,8 +6,8 @@ model:
   d_ff: 2048           # Feed-forward dimension
   dropout: 0.1         # Dropout rate
   max_seq_len: 512     # Maximum sequence length
-  vocab_size_src: 32000  # Source vocabulary size
-  vocab_size_tgt: 32000  # Target vocabulary size
+  vocab_size_src: 8000  # Source vocabulary size
+  vocab_size_tgt: 8000  # Target vocabulary size
   
 # Positional Encoding Configuration
 positional_encoding:
@@ -21,11 +21,10 @@ training:
   warmup_steps: 4000
   label_smoothing: 0.1
   gradient_clip: 1.0
-  save_every: 5  # Save checkpoint every N epochs
+  save_every: 5
   
 # Data Configuration
 data:
-  # JSON files with preprocessed data splits
   train_file: "data/train.json"
   val_file: "data/val.json"
   test_file: "data/test.json"
