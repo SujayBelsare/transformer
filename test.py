@@ -113,7 +113,11 @@ def test_model(model, src_vocab, tgt_vocab, test_data, config, device):
             'predictions': predictions[:10],  # Store first 10 for analysis
             'references': references[:10]
         }
-        
+        # pickle all the references and predictions
+        with open(f'results_{strategy}.pkl', 'wb') as f:
+            import pickle
+            pickle.dump({'predictions': predictions, 'references': references}, f)
+
         print(f"\nBLEU Score ({strategy}): {bleu_score:.4f}")
     
     return results
@@ -232,7 +236,7 @@ def main():
     if args.model_path:
         model_path = args.model_path
     else:
-        model_path = os.path.join(config['paths']['model_save_path'], 'best_model_more_params.pt')
+        model_path = os.path.join(config['paths']['model_save_path'], 'best_model.pt')
     
     if not os.path.exists(model_path):
         print(f"Model file not found: {model_path}")

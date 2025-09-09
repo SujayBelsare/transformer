@@ -148,8 +148,8 @@ def main():
         print("Data splits not found. Creating splits from raw data...")
         
         # Check for raw data files
-        fi_path = os.path.join(args.data_dir, 'EUbookshop.fi')
-        en_path = os.path.join(args.data_dir, 'EUbookshop.en')
+        fi_path = os.path.join(args.data_dir, 'europarl.fi')
+        en_path = os.path.join(args.data_dir, 'europarl.en')
         
         if not os.path.exists(fi_path) or not os.path.exists(en_path):
             raise FileNotFoundError(f"Raw data files not found. Please ensure {fi_path} and {en_path} exist.")
