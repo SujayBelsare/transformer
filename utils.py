@@ -14,44 +14,6 @@ import matplotlib.pyplot as plt
 
 import sentencepiece as sp
 import pickle
-class SimpleVocab:
-    def __init__(self, model_path):
-        """Load SentencePiece model, build word2idx and idx2word dictionaries."""
-        self.sp = sp.SentencePieceProcessor()
-        self.sp.Load(model_path)
-        self.PAD_ID = self.sp.pad_id()
-        
-        # Build dictionaries from the model
-        vocab_size = self.sp.GetPieceSize()
-        self.word2idx = {self.sp.IdToPiece(i): i for i in range(vocab_size)}
-        self.idx2word = {i: self.sp.IdToPiece(i) for i in range(vocab_size)}
-    
-    def __len__(self):
-        """Return vocabulary size."""
-        return len(self.word2idx)
-    
-    def encode(self, text):
-        """Encode text to list of token IDs using word2idx (approximates subword via SentencePiece)."""
-        # Use SentencePiece for accurate subword encoding, then map to dict for consistency
-        tokens = self.sp.Encode(text, out_type=str)  # Get subword strings
-        return [self.word2idx.get(token, self.PAD_ID) for token in tokens]  # Fallback to PAD if unknown
-    
-    def decode(self, ids):
-        """Decode list of token IDs to text using idx2word."""
-        tokens = [self.idx2word.get(id, '<unk>') for id in ids if id != self.PAD_ID]
-        return self.sp.Decode(tokens)  # Use SentencePiece for proper decoding
-    
-    def save(self, path):
-        """Save the SimpleVocab object to a pickle file."""
-        with open(path, 'wb') as f:
-            pickle.dump(self, f)
-    
-    @staticmethod
-    def load(path):
-        """Load a SimpleVocab object from a pickle file."""
-        with open(path, 'rb') as f:
-            return pickle.load(f)
-
 
 class DataLoader:
     """Custom DataLoader for translation data with JSON format support"""

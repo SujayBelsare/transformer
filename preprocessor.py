@@ -48,7 +48,7 @@ class Preprocessor:
         text = re.sub(r'\s+', ' ', text)
         
         return text.strip()
-    
+
     def clean_symbols(self, text: str) -> str:
         """Remove unwanted symbols but keep important punctuation"""
         # Remove: *, », «, †, ‡, §, ¶, etc. but keep important punctuation
@@ -58,26 +58,26 @@ class Preprocessor:
         # Clean up multiple spaces
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
-    
+
     def tokenize_simple(self, text: str) -> List[str]:
         """Simple tokenization by splitting on whitespace"""
         return text.split()
-    
+
     def is_valid_sentence_pair(self, fi_tokens: List[str], en_tokens: List[str]) -> bool:
         """Check if sentence pair meets quality criteria"""
         # 1. Remove empty or very short sentences (< 2 tokens)
         if len(fi_tokens) < 2 or len(en_tokens) < 2:
             return False
-        
+
         # 2. Remove excessively long sentences (> 200 tokens)
         if len(fi_tokens) > 200 or len(en_tokens) > 200:
             return False
-        
+
         # 3. Filter misaligned pairs (length ratio check)
         ratio = len(fi_tokens) / len(en_tokens)
         if ratio > 3.0 or ratio < 1/3.0:
             return False
-        
+
         return True
     
     def process_sentence_pair(self, fi_sentence: str, en_sentence: str) -> Tuple[str, str, bool]:
@@ -114,10 +114,12 @@ class Preprocessor:
 
     def create_splits_and_save(self):
         """Main function to create splits and save as JSON files"""
+        
+        print("Pre-processing the datasets and creating train/val/test splits.")
+
         assert os.path.exists(self.fi_path), f"File not found: {self.fi_path}"
         assert os.path.exists(self.en_path), f"File not found: {self.en_path}"
 
-        print("Reading data...")
         # Read data
         with open(self.fi_path, "r", encoding="utf-8") as f:
             fi_sentences = f.readlines()
@@ -125,12 +127,10 @@ class Preprocessor:
             en_sentences = f.readlines()
 
         assert len(fi_sentences) == len(en_sentences), "Mismatched corpus sizes"
-        print(f"Loaded {len(fi_sentences)} sentence pairs")
-
+    
         # Process sentences through cleaning pipeline
-        print("Processing sentences through cleaning pipeline...")
         processed_pairs = []
-        seen_pairs = set()  # For duplicate removal
+        seen_pairs = set()
         
         stats = {
             'total': len(fi_sentences),
@@ -143,9 +143,6 @@ class Preprocessor:
         }
         
         for i, (fi_sent, en_sent) in enumerate(zip(fi_sentences, en_sentences)):
-            if i % 10000 == 0:
-                print(f"Processed {i}/{len(fi_sentences)} sentences...")
-            
             fi_clean, en_clean, is_valid = self.process_sentence_pair(fi_sent.strip(), en_sent.strip())
             
             # Skip empty sentences
@@ -230,12 +227,12 @@ class Preprocessor:
 
 if __name__ == "__main__":
     dataset = Preprocessor(
-        fi_path="../data/EUbookshop.fi",
-        en_path="../data/EUbookshop.en",
+        fi_path="./data/EUbookshop.fi",
+        en_path="./data/EUbookshop.en",
         train_ratio=0.8,
         val_ratio=0.1,
         seed=42,
-        out_dir="../data"
+        out_dir="./data"
     )
     
     # Create and save splits

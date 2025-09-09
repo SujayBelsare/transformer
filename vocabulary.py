@@ -17,6 +17,13 @@ class Vocabulary:
         self.UNK_ID = 1  # <unk>  
         self.BOS_ID = 2  # <s> (Beginning of sentence)
         self.EOS_ID = 3  # </s> (End of sentence)
+        
+        # Compatibility aliases
+        self.SOS_ID = self.BOS_ID  # Start of sentence
+    
+    def __len__(self):
+        """Return vocabulary size"""
+        return self.sp.GetPieceSize() if hasattr(self.sp, 'GetPieceSize') and self.sp.GetPieceSize() > 0 else 0
     
     def train(self, 
               sentences: List[str], 

@@ -6,8 +6,7 @@ model:
   d_ff: 2048           # Feed-forward dimension
   dropout: 0.1         # Dropout rate
   max_seq_len: 512     # Maximum sequence length
-  vocab_size_src: 8000  # Source vocabulary size
-  vocab_size_tgt: 8000  # Target vocabulary size
+  vocab_size: 3000     # Shared vocabulary size for both source and target languages
   
 # Positional Encoding Configuration
 positional_encoding:

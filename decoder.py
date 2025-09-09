@@ -325,7 +325,7 @@ class TopKSamplingDecoder:
                 # Sample from top-k
                 probs = F.softmax(top_k_logits, dim=-1)
                 next_token_idx = torch.multinomial(probs, 1).item()
-                next_token = top_k_indices[next_token_idx].item()
+                next_token = top_k_indices[int(next_token_idx)].item()
                 
                 tgt_tokens.append(next_token)
                 

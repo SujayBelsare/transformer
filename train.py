@@ -9,11 +9,11 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from vocabulary import Vocabulary
-
 from encoder import TransformerEncoder
 from decoder import Transformer
+from preprocessor import Preprocessor
 from utils import (
-    load_config, load_data_splits,
+    load_config, load_data_splits, DataLoader,
     create_padding_mask, create_subsequent_mask,
     LabelSmoothingLoss, WarmupScheduler, save_checkpoint,
     plot_training_curves
@@ -124,23 +124,73 @@ def main():
     torch.manual_seed(2023101033)
     np.random.seed(2023101033)
     
+    # Check if data splits exist, if not create them
+    train_json_path = os.path.join(args.data_dir, 'train.json')
+    if not os.path.exists(train_json_path):
+        print("Data splits not found. Creating splits from raw data...")
+        
+        # Check for raw data files
+        fi_path = os.path.join(args.data_dir, 'EUbookshop.fi')
+        en_path = os.path.join(args.data_dir, 'EUbookshop.en')
+        
+        if not os.path.exists(fi_path) or not os.path.exists(en_path):
+            raise FileNotFoundError(f"Raw data files not found. Please ensure {fi_path} and {en_path} exist.")
+        
+        # Create preprocessor and generate splits
+        preprocessor = Preprocessor(
+            fi_path=fi_path,
+            en_path=en_path,
+            train_ratio=0.8,
+            val_ratio=0.1,
+            seed=2023101033,
+            out_dir=args.data_dir
+        )
+        
+        preprocessor.create_splits_and_save()
+        print("Data splits created successfully!")
+    
     # Load preprocessed data splits
     (train_src, train_tgt), (val_src, val_tgt), (test_src, test_tgt) = load_data_splits(args.data_dir)
     print(f"Training samples: {len(train_src)}")
     print(f"Validation samples: {len(val_src)}")
     print(f"Test samples: {len(test_src)}")
 
-    # Loading vocabulary    
-    vocab_model_path = os.path.join('data_transformations', 'finnish_english.model')
+    # Loading or training vocabulary    
+    vocab_model_path = os.path.join('vocab', 'sentencepiece_model.model')
     if os.path.exists(vocab_model_path):
-        vocab = SimpleVocab(vocab_model_path)
+        print("Loading existing vocabulary model...")
+        vocab = Vocabulary()
+        vocab.sp.Load(vocab_model_path)
+        vocab.model_path = vocab_model_path
     else:
-        raise FileNotFoundError(f"Vocabulary model not found at {vocab_model_path}. Please ensure the model is trained and available.")
-    print(f"Vocabulary size: {len(vocab)}")
+        print("Vocabulary model not found. Training new vocabulary...")
+        
+        # Collect all sentences for vocabulary training
+        all_sentences = []
+        for src_sent, tgt_sent in zip(train_src + val_src + test_src, train_tgt + val_tgt + test_tgt):
+            all_sentences.append(src_sent)
+            all_sentences.append(tgt_sent)
+        
+        print(f"Training vocabulary on {len(all_sentences)} sentences...")
+        
+        # Create vocabulary directory
+        os.makedirs('vocab', exist_ok=True)
+        
+        # Train vocabulary
+        vocab = Vocabulary()
+        vocab.train(
+            sentences=all_sentences,
+            vocab_size=config['model'].get('vocab_size', 8000),
+            model_prefix=os.path.join('vocab', 'sentencepiece_model'),
+            character_coverage=0.9995
+        )
+        
+        print("Vocabulary training completed!")
+    
+    print(f"Vocabulary size: {vocab.sp.GetPieceSize()}")
 
-    # Save vocabulary info
+    # Ensure vocabulary directory exists (vocabulary is already saved during training)
     os.makedirs(config['paths']['vocab_path'], exist_ok=True)
-    vocab.save(os.path.join(config['paths']['vocab_path'], 'vocab.pkl'))
 
     # Create data loaders
     print("Creating data loaders...")
@@ -156,9 +206,10 @@ def main():
     
     # Initialize model
     print("Initializing model...")
+    vocab_size = len(vocab)
     model = Transformer(
-        src_vocab_size=len(vocab),
-        tgt_vocab_size=len(vocab),
+        src_vocab_size=vocab_size,
+        tgt_vocab_size=vocab_size,
         d_model=config['model']['d_model'],
         n_heads=config['model']['n_heads'],
         n_layers=config['model']['n_layers'],
@@ -174,7 +225,7 @@ def main():
     
     # Initialize loss function
     criterion = LabelSmoothingLoss(
-        size=len(vocab),
+        size=vocab_size,
         padding_idx=vocab.PAD_ID,
         smoothing=config['training']['label_smoothing']
     )
