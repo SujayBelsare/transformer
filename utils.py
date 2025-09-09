@@ -157,6 +157,7 @@ class WarmupScheduler:
         self.d_model = d_model
         self.warmup_steps = warmup_steps
         self.step_num = 0
+        self.last_lr = 0
         
     def step(self):
         self.step_num += 1
@@ -164,7 +165,12 @@ class WarmupScheduler:
                                           self.step_num * self.warmup_steps ** (-1.5))
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
+        self.last_lr = lr
         return lr
+    
+    def get_last_lr(self):
+        """Get the last learning rate"""
+        return [self.last_lr]
 
 def save_checkpoint(model, optimizer, epoch, loss, path):
     """Save model checkpoint"""

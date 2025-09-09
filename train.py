@@ -20,12 +20,18 @@ from utils import (
 )
 
 def train_epoch(model, dataloader, criterion, optimizer, scheduler, device, config):
-    """Train for one epoch"""
+    """Train model for one epoch"""
     model.train()
     total_loss = 0
     n_batches = 0
     
+    # Get gradient accumulation steps from config
+    gradient_accumulation_steps = config['training'].get('gradient_accumulation_steps', 1)
+    
     progress_bar = tqdm(dataloader, desc="Training")
+    
+    # Initialize gradients
+    optimizer.zero_grad()
     
     for batch_idx, (src, tgt_input, tgt_output) in enumerate(progress_bar):
         src = src.to(device)
@@ -39,38 +45,50 @@ def train_epoch(model, dataloader, criterion, optimizer, scheduler, device, conf
         tgt_mask = tgt_mask & tgt_padding_mask
         
         # Forward pass
-        optimizer.zero_grad()
-        
         output, attention_weights = model(src, tgt_input, src_mask, tgt_mask)
         
         # Reshape for loss calculation
         output = output.contiguous().view(-1, output.size(-1))
         tgt_output = tgt_output.contiguous().view(-1)
         
-        # Calculate loss
-        loss = criterion(output, tgt_output)
+        # Calculate loss and normalize by accumulation steps
+        loss = criterion(output, tgt_output) / gradient_accumulation_steps
         
         # Backward pass
         loss.backward()
         
-        # Gradient clipping
-        if config['training']['gradient_clip'] > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config['training']['gradient_clip'])
+        # Update weights every gradient_accumulation_steps
+        if (batch_idx + 1) % gradient_accumulation_steps == 0:
+            # Gradient clipping
+            if config['training']['gradient_clip'] > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config['training']['gradient_clip'])
+            
+            optimizer.step()
+            optimizer.zero_grad()
+            
+            # Update learning rate
+            lr = scheduler.step()
         
-        optimizer.step()
-        
-        # Update learning rate
-        lr = scheduler.step()
-        
-        # Update progress
-        total_loss += loss.item()
+        # Update progress (multiply loss back to get actual loss for logging)
+        total_loss += loss.item() * gradient_accumulation_steps
         n_batches += 1
         avg_loss = total_loss / n_batches
         
+        # Get current learning rate for display
+        current_lr = scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else optimizer.param_groups[0]['lr']
+        
         progress_bar.set_postfix({
             'Loss': f'{avg_loss:.4f}',
-            'LR': f'{lr:.2e}'
+            'LR': f'{current_lr:.2e}',
+            'Step': f'{batch_idx + 1}/{len(dataloader)}'
         })
+    
+    # Handle any remaining gradients at the end of epoch
+    if len(dataloader) % gradient_accumulation_steps != 0:
+        if config['training']['gradient_clip'] > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config['training']['gradient_clip'])
+        optimizer.step()
+        optimizer.zero_grad()
     
     return total_loss / n_batches
 

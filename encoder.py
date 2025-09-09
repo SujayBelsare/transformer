@@ -138,8 +138,13 @@ class MultiHeadAttention(nn.Module):
         
         # Add relative position bias if using relative position encoding
         if self.pos_encoding_type == "relative_bias":
-            relative_bias = self.relative_bias(seq_len_q).to(attention_scores.device)
-            attention_scores += relative_bias
+            # For self-attention, use seq_len_q; for cross-attention, disable relative bias
+            # since relative bias is mainly designed for self-attention scenarios
+            if seq_len_q == seq_len_k:  # Self-attention case
+                relative_bias = self.relative_bias(seq_len_q).to(attention_scores.device)
+                attention_scores += relative_bias
+            # For cross-attention (seq_len_q != seq_len_k), we skip relative bias
+            # as it's not well-defined for sequences of different lengths
         
         # Apply mask
         if mask is not None:
