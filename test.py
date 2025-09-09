@@ -109,7 +109,7 @@ def test_model(model, src_vocab, tgt_vocab, test_data, config, device):
         bleu_score = compute_bleu(predictions, references)
         
         results[strategy] = {
-            'bleu': bleu_score,
+            'bleu_score': bleu_score,
             'predictions': predictions[:10],  # Store first 10 for analysis
             'references': references[:10]
         }
@@ -232,7 +232,7 @@ def main():
     if args.model_path:
         model_path = args.model_path
     else:
-        model_path = os.path.join(config['paths']['model_save_path'], 'best_model.pt')
+        model_path = os.path.join(config['paths']['model_save_path'], 'best_model_more_params.pt')
     
     if not os.path.exists(model_path):
         print(f"Model file not found: {model_path}")

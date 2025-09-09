@@ -10,7 +10,7 @@ import os
 import json
 from typing import Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
-
+import sacrebleu
 
 import sentencepiece as sp
 import pickle
@@ -201,43 +201,15 @@ def plot_training_curves(losses, path):
     plt.close()
 
 def compute_bleu(predictions, references):
-    """Simple BLEU score computation"""
-    # This is a simplified version - you might want to use sacrebleu for better results
-    from collections import Counter
-    import math
-    
-    def get_ngrams(tokens, n):
-        return [tuple(tokens[i:i+n]) for i in range(len(tokens)-n+1)]
-    
-    def bleu_score(pred_tokens, ref_tokens, max_n=4):
-        scores = []
-        for n in range(1, max_n + 1):
-            pred_ngrams = Counter(get_ngrams(pred_tokens, n))
-            ref_ngrams = Counter(get_ngrams(ref_tokens, n))
-            
-            overlap = sum((pred_ngrams & ref_ngrams).values())
-            total = sum(pred_ngrams.values())
-            
-            if total == 0:
-                scores.append(0)
-            else:
-                scores.append(overlap / total)
+    """Compute BLEU score using sacrebleu"""
+    # Ensure predictions and references are lists of strings
+    if isinstance(predictions, list) and isinstance(references, list):
+        # sacrebleu expects references as a list of lists (multiple references per prediction)
+        # For single reference per prediction, we wrap each reference in a list
+        refs = [[ref] for ref in references]
         
-        # Brevity penalty
-        bp = min(1, math.exp(1 - len(ref_tokens) / len(pred_tokens))) if len(pred_tokens) > 0 else 0
-        
-        # Geometric mean
-        if all(score > 0 for score in scores):
-            bleu = bp * math.exp(sum(math.log(score) for score in scores) / len(scores))
-        else:
-            bleu = 0
-        
-        return bleu
-    
-    total_bleu = 0
-    for pred, ref in zip(predictions, references):
-        pred_tokens = pred.split()
-        ref_tokens = ref.split()
-        total_bleu += bleu_score(pred_tokens, ref_tokens)
-    
-    return total_bleu / len(predictions)
+        # Calculate BLEU score using sacrebleu
+        bleu = sacrebleu.corpus_bleu(predictions, refs)
+        return bleu.score
+    else:
+        raise ValueError("Predictions and references must be lists of strings")

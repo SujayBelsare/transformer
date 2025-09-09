@@ -1,0 +1,44 @@
+# Model Configuration
+model:
+  d_model: 512          # Model dimension
+  n_heads: 8            # Number of attention heads
+  n_layers: 4           # Encoder/decoder layers (balanced for 8GB GPU)
+  d_ff: 2048            # Feed-forward dimension
+  dropout: 0.2          # Slightly lower for small dataset
+  max_seq_len: 256      # Covers most sentences without wasting memory
+  vocab_size: 16000     # Use BPE/SentencePiece, bigger than 3k
+
+# Positional Encoding
+positional_encoding:
+  type: "relative_bias"  # More robust for translation
+
+# Training Configuration
+training:
+  batch_size: 128        # Fits in 8GB, increase to 160 if memory allows
+  learning_rate: 0.0003  # Higher than before (warms up to peak ~3e-4)
+  num_epochs: 40         # Enough for 100k rows; avoid overfitting
+  warmup_steps: 4000
+  label_smoothing: 0.1
+  gradient_clip: 1.0
+  save_every: 5
+
+# Data Configuration
+data:
+  train_file: "data/train.json"
+  val_file: "data/val.json"
+  test_file: "data/test.json"
+  max_len: 256           # Don’t cut too short
+
+# Decoding Configuration
+decoding:
+  strategy: "beam"       # Beam search is better than greedy
+  beam_size: 5           # Standard beam width
+  k: 50
+  temperature: 1.0
+  max_length: 128        # Reasonable for your dataset
+
+# File Paths
+paths:
+  model_save_path: "checkpoints/"
+  log_path: "logs/"
+  vocab_path: "vocab/"
