@@ -5,3 +5,5 @@ __pycache__/
 todo.txt
 vocab/
 old_models/
+
+.*tgz
