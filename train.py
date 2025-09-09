@@ -15,7 +15,7 @@ from preprocessor import Preprocessor
 from utils import (
     load_config, load_data_splits, DataLoader,
     create_padding_mask, create_subsequent_mask,
-    LabelSmoothingLoss, WarmupScheduler, save_checkpoint,
+    WarmupScheduler, save_checkpoint,
     plot_training_curves
 )
 
@@ -48,7 +48,7 @@ def train_epoch(model, dataloader, criterion, optimizer, scheduler, device, conf
         tgt_output = tgt_output.contiguous().view(-1)
         
         # Calculate loss
-        loss = criterion(F.log_softmax(output, dim=-1), tgt_output)
+        loss = criterion(output, tgt_output)
         
         # Backward pass
         loss.backward()
@@ -100,7 +100,7 @@ def validate(model, dataloader, criterion, device):
             tgt_output = tgt_output.contiguous().view(-1)
             
             # Calculate loss
-            loss = criterion(F.log_softmax(output, dim=-1), tgt_output)
+            loss = criterion(output, tgt_output)
             
             total_loss += loss.item()
             n_batches += 1
@@ -223,12 +223,8 @@ def main():
     
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
     
-    # Initialize loss function
-    criterion = LabelSmoothingLoss(
-        size=vocab_size,
-        padding_idx=vocab.PAD_ID,
-        smoothing=config['training']['label_smoothing']
-    )
+    # Initialize loss function - using Cross Entropy Loss
+    criterion = nn.CrossEntropyLoss(ignore_index=vocab.PAD_ID)
     
     # Initialize optimizer
     optimizer = optim.Adam(

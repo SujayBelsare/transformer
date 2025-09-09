@@ -5,7 +5,8 @@ import numpy as np
 from tqdm import tqdm
 
 from decoder import Transformer, GreedyDecoder, BeamSearchDecoder, TopKSamplingDecoder
-from utils import load_config, load_data_splits, Vocabulary, compute_bleu
+from utils import load_config, load_data_splits, compute_bleu
+from vocabulary import Vocabulary
 
 def load_model_and_vocabs(config, model_path, device):
     """Load trained model and vocabularies"""
@@ -14,10 +15,10 @@ def load_model_and_vocabs(config, model_path, device):
     vocab_model_path = os.path.join('data_transformations', 'finnish_english.model')
     
     if os.path.exists(vocab_model_path):
-        vocab = Vocabulary(vocab_model_path)
+        vocab = Vocabulary.load(vocab_model_path)
     else:
-        # Load from pickle file as fallback
-        vocab_path = os.path.join(config['paths']['vocab_path'], 'vocab.pkl')
+        # Load from SentencePiece model file as fallback
+        vocab_path = os.path.join(config['paths']['vocab_path'], 'sentencepiece_model.model')
         vocab = Vocabulary.load(vocab_path)
     
     # Initialize model
@@ -114,18 +115,6 @@ def test_model(model, src_vocab, tgt_vocab, test_data, config, device):
         }
         
         print(f"\nBLEU Score ({strategy}): {bleu_score:.4f}")
-    
-    return results
-        
-        # Compute BLEU score
-        bleu_score = compute_bleu(predictions, references)
-        print(f"\nBLEU Score ({strategy}): {bleu_score:.4f}")
-        
-        results[strategy] = {
-            'bleu_score': bleu_score,
-            'predictions': predictions,
-            'references': references
-        }
     
     return results
 
