@@ -54,7 +54,7 @@ misc:
   num_workers: 4                    # Number of data loader workers
   
   # Model Management
-  resume_training: true            # Whether to resume from a checkpoint
+  resume_training: false            # Whether to resume from a checkpoint
   resume_model_name: "best_model.pt"  # Model checkpoint to resume from (null for fresh start)
   test_model_name: "final_model.pt"  # Model to use for testing/inference
   save_optimizer_state: true        # Save optimizer state with checkpoints

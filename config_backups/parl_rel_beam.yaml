@@ -6,7 +6,7 @@ model:
   d_ff: 2048            # Feed-forward dimension
   dropout: 0.2          # Slightly lower for small dataset
   max_seq_len: 256      # Covers most sentences without wasting memory
-  vocab_size: 8000     # Use BPE/SentencePiece, bigger than 3k
+  vocab_size: 3000     # Use BPE/SentencePiece, bigger than 3k
 
 # Positional Encoding
 positional_encoding:
@@ -18,7 +18,7 @@ training:
   gradient_accumulation_steps: 4  # Accumulate gradients over 4 mini-batches (effective batch size: 64*4=256)
   learning_rate: 0.0003  # Higher than before (warms up to peak ~3e-4)
   num_epochs: 40         # Enough for 100k rows; avoid overfitting
-  warmup_steps: 1000      # Reduced since effective batch size is 4x larger
+  warmup_steps: 1000
   label_smoothing: 0.1
   gradient_clip: 1.0
   save_every: 5
@@ -28,13 +28,15 @@ data:
   train_file: "data/train.json"
   val_file: "data/val.json"
   test_file: "data/test.json"
+  en: "euparl.en"
+  fi: "euparl.fi"
   max_len: 256           # Don’t cut too short
 
 # Decoding Configuration
 decoding:
   strategy: "beam"       # Beam search is better than greedy
-  beam_size: 4           # Standard beam width
-  k: 40
+  beam_size: 5           # Standard beam width
+  k: 50
   temperature: 1.0
   max_length: 128        # Reasonable for your dataset
 
@@ -43,3 +45,16 @@ paths:
   model_save_path: "checkpoints/"
   log_path: "logs/"
   vocab_path: "vocab/"
+
+
+# Miscellaneous Settings
+misc:
+  seed: 42                          # Random seed for reproducible results
+  device: "cuda"                    # Device: "cuda", "cpu", or "auto" for automatic detection
+  num_workers: 4                    # Number of data loader workers
+  
+  # Model Management
+  resume_training: false            # Whether to resume from a checkpoint
+  resume_model_name: "best_model.pt"  # Model checkpoint to resume from (null for fresh start)
+  test_model_name: "final_model.pt"  # Model to use for testing/inference
+  save_optimizer_state: true        # Save optimizer state with checkpoints
