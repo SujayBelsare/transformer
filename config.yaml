@@ -10,14 +10,15 @@ model:
 
 # Positional Encoding
 positional_encoding:
-  type: "relative_bias"  # More robust for translation
+  type: "rope"  # More robust for translation
 
 # Training Configuration
 training:
-  batch_size: 128        # Fits in 8GB, increase to 160 if memory allows
+  batch_size: 64        # Fits in 8GB, increase to 160 if memory allows
+  gradient_accumulation_steps: 4  # Accumulate gradients over 4 mini-batches (effective batch size: 64*4=256)
   learning_rate: 0.0003  # Higher than before (warms up to peak ~3e-4)
   num_epochs: 40         # Enough for 100k rows; avoid overfitting
-  warmup_steps: 4000
+  warmup_steps: 1000
   label_smoothing: 0.1
   gradient_clip: 1.0
   save_every: 5
@@ -27,13 +28,13 @@ data:
   train_file: "data/train.json"
   val_file: "data/val.json"
   test_file: "data/test.json"
-  en: "EUbookshop.en"
-  fi: "EUbookshop.fi"
+  en: "europarl.en"
+  fi: "europarl.fi"
   max_len: 256           # Don’t cut too short
 
 # Decoding Configuration
 decoding:
-  strategy: "greedy"       # Beam search is better than greedy
+  strategy: "beam"       # Beam search is better than greedy
   beam_size: 5           # Standard beam width
   k: 50
   temperature: 1.0
@@ -48,12 +49,12 @@ paths:
 
 # Miscellaneous Settings
 misc:
-  seed: 42                          # Random seed for reproducible results
+  seed: 42                          #a Random seed for reproducible results
   device: "cuda"                    # Device: "cuda", "cpu", or "auto" for automatic detection
   num_workers: 4                    # Number of data loader workers
   
   # Model Management
   resume_training: false            # Whether to resume from a checkpoint
   resume_model_name: "best_model.pt"  # Model checkpoint to resume from (null for fresh start)
-  test_model_name: "final_model.pt"  # Model to use for testing/inference
+  test_model_name: "../old_models/parl_rope.pt"  # Model to use for testing/inference
   save_optimizer_state: true        # Save optimizer state with checkpoints
