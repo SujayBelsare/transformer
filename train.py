@@ -163,8 +163,8 @@ def main():
         print("Data splits not found. Creating splits from raw data...")
         
         # Check for raw data files
-        fi_path = os.path.join(args.data_dir, '{config['data']['fi']}')
-        en_path = os.path.join(args.data_dir, 'config['data']['en']')
+        fi_path = os.path.join(args.data_dir, f"{config['data']['fi']}")
+        en_path = os.path.join(args.data_dir, f"{config['data']['en']}")
         print("Using Raw files:")
         print(f"  Finnish: {fi_path}")
         print(f"  English: {en_path}")

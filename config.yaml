@@ -10,7 +10,7 @@ model:
 
 # Positional Encoding
 positional_encoding:
-  type: "rope"  # More robust for translation
+  type: "relative_bias"  # More robust for translation
 
 # Training Configuration
 training:
@@ -27,8 +27,8 @@ data:
   train_file: "data/train.json"
   val_file: "data/val.json"
   test_file: "data/test.json"
-  en: "europarl.en"
-  fi: "europarl.fi"
+  en: "EUbookshop.en"
+  fi: "EUbookshop.fi"
   max_len: 256           # Don’t cut too short
 
 # Decoding Configuration
@@ -55,5 +55,5 @@ misc:
   # Model Management
   resume_training: false            # Whether to resume from a checkpoint
   resume_model_name: "best_model.pt"  # Model checkpoint to resume from (null for fresh start)
-  test_model_name: "../old_models/original.pt"  # Model to use for testing/inference
+  test_model_name: "final_model.pt"  # Model to use for testing/inference
   save_optimizer_state: true        # Save optimizer state with checkpoints
