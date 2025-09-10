@@ -10,7 +10,7 @@ import os
 import json
 from typing import Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
-import sacrebleu
+import evaluate
 
 import sentencepiece as sp
 import pickle
@@ -96,6 +96,36 @@ def load_config(config_path):
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
+def setup_misc_config(config):
+    """Setup and validate misc configuration options"""
+    misc_config = config.get('misc', {})
+    
+    # Validate device setting
+    device = misc_config.get('device', 'auto')
+    if device not in ['auto', 'cuda', 'cpu']:
+        print(f"Warning: Invalid device '{device}', falling back to 'auto'")
+        misc_config['device'] = 'auto'
+    
+    # Validate seed
+    seed = misc_config.get('seed', 42)
+    if not isinstance(seed, int) or seed < 0:
+        print(f"Warning: Invalid seed '{seed}', using default seed 42")
+        misc_config['seed'] = 42
+    
+    # Note about num_workers
+    num_workers = misc_config.get('num_workers', 4)
+    if num_workers != 4:
+        print(f"Note: num_workers={num_workers} is configured but not used with custom DataLoader")
+        print("This setting would be used if PyTorch DataLoader was implemented instead")
+    
+    # Validate boolean settings
+    for bool_setting in ['resume_training', 'save_optimizer_state']:
+        value = misc_config.get(bool_setting)
+        if value is not None and not isinstance(value, bool):
+            print(f"Warning: {bool_setting} should be boolean, got {type(value).__name__}")
+    
+    return misc_config
+
 def load_json_data(json_file):
     """Load data from JSON file"""
     with open(json_file, 'r', encoding='utf-8') as f:
@@ -171,23 +201,75 @@ class WarmupScheduler:
     def get_last_lr(self):
         """Get the last learning rate"""
         return [self.last_lr]
+    
+    def state_dict(self):
+        """Get scheduler state for saving"""
+        return {
+            'step_num': self.step_num,
+            'last_lr': self.last_lr
+        }
+    
+    def load_state_dict(self, state_dict):
+        """Load scheduler state from checkpoint"""
+        self.step_num = state_dict['step_num']
+        self.last_lr = state_dict['last_lr']
 
-def save_checkpoint(model, optimizer, epoch, loss, path):
+def save_checkpoint(model, optimizer, scheduler, epoch, loss, path, config=None, train_losses=None, val_losses=None, best_val_loss=None):
     """Save model checkpoint"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    torch.save({
+    checkpoint = {
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
         'loss': loss
-    }, path)
+    }
+    
+    # Conditionally save optimizer state based on config
+    save_optimizer_state = True  # Default behavior
+    if config is not None:
+        save_optimizer_state = config.get('misc', {}).get('save_optimizer_state', True)
+    
+    if save_optimizer_state and optimizer is not None:
+        checkpoint['optimizer_state_dict'] = optimizer.state_dict()
+    
+    # Save scheduler state if provided and optimizer state is being saved
+    if save_optimizer_state and scheduler is not None:
+        checkpoint['scheduler_state_dict'] = scheduler.state_dict()
+    
+    # Save training history if provided
+    if train_losses is not None:
+        checkpoint['train_losses'] = train_losses
+    if val_losses is not None:
+        checkpoint['val_losses'] = val_losses
+    if best_val_loss is not None:
+        checkpoint['best_val_loss'] = best_val_loss
+    
+    torch.save(checkpoint, path)
 
-def load_checkpoint(model, optimizer, path):
+def load_checkpoint(model, optimizer, scheduler, path):
     """Load model checkpoint"""
     checkpoint = torch.load(path)
     model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    return checkpoint['epoch'], checkpoint['loss']
+    
+    # Load optimizer state if it exists in checkpoint and optimizer is provided
+    if optimizer is not None and 'optimizer_state_dict' in checkpoint:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    elif optimizer is not None:
+        print("Warning: Optimizer state not found in checkpoint, using fresh optimizer state")
+    
+    # Load scheduler state if it exists in checkpoint
+    if scheduler is not None and 'scheduler_state_dict' in checkpoint:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    elif scheduler is not None and 'optimizer_state_dict' in checkpoint:
+        print("Warning: Scheduler state not found in checkpoint, using fresh scheduler state")
+    
+    # Return additional information for resuming training
+    epoch = checkpoint['epoch']
+    loss = checkpoint['loss']
+    train_losses = checkpoint.get('train_losses', [])
+    val_losses = checkpoint.get('val_losses', [])
+    best_val_loss = checkpoint.get('best_val_loss', float('inf'))
+    
+    return epoch, loss, train_losses, val_losses, best_val_loss
 
 def plot_training_curves(losses, path):
     """Plot training loss curves"""
@@ -203,13 +285,6 @@ def plot_training_curves(losses, path):
 def compute_bleu(predictions, references):
     """Compute BLEU score using sacrebleu"""
     # Ensure predictions and references are lists of strings
-    if isinstance(predictions, list) and isinstance(references, list):
-        # sacrebleu expects references as a list of lists (multiple references per prediction)
-        # For single reference per prediction, we wrap each reference in a list
-        refs = [[ref] for ref in references]
-        
-        # Calculate BLEU score using sacrebleu
-        bleu = sacrebleu.corpus_bleu(predictions, refs)
-        return bleu.score
-    else:
-        raise ValueError("Predictions and references must be lists of strings")
+    sacrebleu_hf = evaluate.load("sacrebleu")
+    result_hf = sacrebleu_hf.compute(predictions=predictions, references=[[r] for r in references])
+    return result_hf['score']

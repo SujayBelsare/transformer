@@ -15,8 +15,8 @@ from preprocessor import Preprocessor
 from utils import (
     load_config, load_data_splits, DataLoader,
     create_padding_mask, create_subsequent_mask,
-    WarmupScheduler, save_checkpoint,
-    plot_training_curves
+    WarmupScheduler, save_checkpoint, load_checkpoint,
+    plot_training_curves, setup_misc_config
 )
 
 def train_epoch(model, dataloader, criterion, optimizer, scheduler, device, config):
@@ -128,7 +128,6 @@ def validate(model, dataloader, criterion, device):
 def main():
     parser = argparse.ArgumentParser(description='Train Transformer for Machine Translation')
     parser.add_argument('--config', type=str, default='config.yaml', help='Path to config file')
-    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--data_dir', type=str, default='data', help='Path to data directory')
     
     args = parser.parse_args()
@@ -136,11 +135,27 @@ def main():
     # Load configuration
     config = load_config(args.config)
     
-    print(f"Using device: {args.device}")
+    # Setup and validate misc configuration
+    misc_config = setup_misc_config(config)
     
-    # Set random seed for reproducibility
-    torch.manual_seed(2023101033)
-    np.random.seed(2023101033)
+    # Handle device configuration from misc settings
+    device = misc_config.get('device', 'auto')
+    if device == 'auto':
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    elif device == 'cuda' and not torch.cuda.is_available():
+        print("Warning: CUDA requested but not available, falling back to CPU")
+        device = 'cpu'
+    
+    print(f"Using device: {device}")
+    
+    # Set random seed for reproducibility from misc settings
+    seed = misc_config.get('seed', 42)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    print(f"Random seed set to: {seed}")
     
     # Check if data splits exist, if not create them
     train_json_path = os.path.join(args.data_dir, 'train.json')
@@ -148,9 +163,12 @@ def main():
         print("Data splits not found. Creating splits from raw data...")
         
         # Check for raw data files
-        fi_path = os.path.join(args.data_dir, 'europarl.fi')
-        en_path = os.path.join(args.data_dir, 'europarl.en')
-        
+        fi_path = os.path.join(args.data_dir, '{config['data']['fi']}')
+        en_path = os.path.join(args.data_dir, 'config['data']['en']')
+        print("Using Raw files:")
+        print(f"  Finnish: {fi_path}")
+        print(f"  English: {en_path}")
+
         if not os.path.exists(fi_path) or not os.path.exists(en_path):
             raise FileNotFoundError(f"Raw data files not found. Please ensure {fi_path} and {en_path} exist.")
         
@@ -160,7 +178,7 @@ def main():
             en_path=en_path,
             train_ratio=0.8,
             val_ratio=0.1,
-            seed=2023101033,
+            seed=seed,
             out_dir=args.data_dir
         )
         
@@ -237,7 +255,7 @@ def main():
         pos_encoding_type=config['positional_encoding']['type']
     )
     
-    model = model.to(args.device)
+    model = model.to(device)
     
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
     
@@ -259,24 +277,43 @@ def main():
         config['training']['warmup_steps']
     )
     
-    # Training loop
-    print("Starting training...")
+    # Initialize training variables
+    start_epoch = 0
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
     
+    # Resume from checkpoint if specified in misc settings
+    resume_training = misc_config.get('resume_training', False)
+    if resume_training:
+        resume_model_name = misc_config.get('resume_model_name', 'best_model.pt')
+        resume_path = os.path.join(config['paths']['model_save_path'], resume_model_name)
+        
+        if os.path.exists(resume_path):
+            print(f"Resuming training from checkpoint: {resume_path}")
+            start_epoch, last_loss, train_losses, val_losses, best_val_loss = load_checkpoint(
+                model, optimizer, scheduler, resume_path
+            )
+            start_epoch += 1  # Start from next epoch
+            print(f"Resumed from epoch {start_epoch}, last loss: {last_loss:.4f}, best val loss: {best_val_loss:.4f}")
+        else:
+            print(f"Warning: Resume requested but checkpoint file {resume_path} not found. Starting from scratch.")
+    
+    # Training loop
+    print("Starting training...")
+    
     os.makedirs(config['paths']['model_save_path'], exist_ok=True)
     os.makedirs(config['paths']['log_path'], exist_ok=True)
     
-    for epoch in range(config['training']['num_epochs']):
+    for epoch in range(start_epoch, config['training']['num_epochs']):
         print(f"\nEpoch {epoch + 1}/{config['training']['num_epochs']}")
         
         # Train
-        train_loss = train_epoch(model, train_loader, criterion, optimizer, scheduler, args.device, config)
+        train_loss = train_epoch(model, train_loader, criterion, optimizer, scheduler, device, config)
         train_losses.append(train_loss)
         
         # Validate
-        val_loss = validate(model, val_loader, criterion, args.device)
+        val_loss = validate(model, val_loader, criterion, device)
         val_losses.append(val_loss)
         
         print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
@@ -287,7 +324,8 @@ def main():
                 config['paths']['model_save_path'], 
                 f'checkpoint_epoch_{epoch + 1}.pt'
             )
-            save_checkpoint(model, optimizer, epoch, train_loss, checkpoint_path)
+            save_checkpoint(model, optimizer, scheduler, epoch, train_loss, checkpoint_path, 
+                          config, train_losses, val_losses, best_val_loss)
         
         # Save best model
         if val_loss < best_val_loss:
@@ -296,12 +334,14 @@ def main():
                 config['paths']['model_save_path'], 
                 'best_model.pt'
             )
-            save_checkpoint(model, optimizer, epoch, val_loss, best_model_path)
+            save_checkpoint(model, optimizer, scheduler, epoch, val_loss, best_model_path, 
+                          config, train_losses, val_losses, best_val_loss)
             print(f"New best model saved with validation loss: {val_loss:.4f}")
     
     # Save final model
     final_model_path = os.path.join(config['paths']['model_save_path'], 'final_model.pt')
-    save_checkpoint(model, optimizer, config['training']['num_epochs'], train_losses[-1], final_model_path)
+    save_checkpoint(model, optimizer, scheduler, config['training']['num_epochs'] - 1, 
+                   train_losses[-1], final_model_path, config, train_losses, val_losses, best_val_loss)
     
     # Plot training curves
     plt.figure(figsize=(12, 5))

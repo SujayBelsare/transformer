@@ -201,7 +201,6 @@ def main():
     parser = argparse.ArgumentParser(description='Test Transformer Model')
     parser.add_argument('--config', type=str, default='config.yaml', help='Path to config file')
     parser.add_argument('--model_path', type=str, help='Path to trained model')
-    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--data_dir', type=str, default='data', help='Path to data directory')
     parser.add_argument('--compare_pos_encodings', action='store_true', 
                        help='Compare different positional encodings')
@@ -212,11 +211,23 @@ def main():
     
     config = load_config(args.config)
     
-    print(f"Using device: {args.device}")
+    # Setup and validate misc configuration
+    from utils import setup_misc_config
+    misc_config = setup_misc_config(config)
+    
+    # Handle device configuration from misc settings
+    device = misc_config.get('device', 'auto')
+    if device == 'auto':
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    elif device == 'cuda' and not torch.cuda.is_available():
+        print("Warning: CUDA requested but not available, falling back to CPU")
+        device = 'cpu'
+    
+    print(f"Using device: {device}")
     
     if args.compare_pos_encodings:
         # Compare positional encodings
-        results_comparison = compare_positional_encodings(args.config, args.device)
+        results_comparison = compare_positional_encodings(args.config, device)
         
         # Analyze comparison results
         for pos_type, results in results_comparison.items():
@@ -236,14 +247,16 @@ def main():
     if args.model_path:
         model_path = args.model_path
     else:
-        model_path = os.path.join(config['paths']['model_save_path'], 'best_model.pt')
+        # Use test_model_name from misc settings
+        test_model_name = misc_config.get('test_model_name', 'best_model.pt')
+        model_path = os.path.join(config['paths']['model_save_path'], test_model_name)
     
     if not os.path.exists(model_path):
         print(f"Model file not found: {model_path}")
         return
     
     # Load model and vocabularies
-    model, src_vocab, tgt_vocab = load_model_and_vocabs(config, model_path, args.device)
+    model, src_vocab, tgt_vocab = load_model_and_vocabs(config, model_path, device)
     
     if args.strategy:
         # Test specific strategy
@@ -253,13 +266,13 @@ def main():
         config['decoding']['strategy'] = args.strategy
         
         # Test model
-        results = test_model(model, src_vocab, src_vocab, (test_src, test_tgt), config, args.device)
+        results = test_model(model, src_vocab, src_vocab, (test_src, test_tgt), config, device)
         
         # Analyze results
         analyze_results(results)
     else:
         # Test all strategies
-        results = test_model(model, src_vocab, src_vocab, (test_src, test_tgt), config, args.device)
+        results = test_model(model, src_vocab, src_vocab, (test_src, test_tgt), config, device)
         
         # Analyze results
         analyze_results(results)
